@@ -5,15 +5,12 @@ use App\Models\Product;
 use App\Models\User;
 
 class PublicMenu extends Component {
-    public $vendor;
-
-    public function mount($userId) {
-        $this->vendor = User::findOrFail($userId);
-    }
-
+    public $vendorId;
+    public function mount($userId) { $this->vendorId = $userId; }
     public function render() {
         return view('livewire.public-menu', [
-            'products' => Product::where('user_id', $this->vendor->id)->get()
+            'products' => Product::where('user_id', $this->vendorId)->get(),
+            'vendor' => User::find($this->vendorId)
         ])->layout('layouts.base');
     }
 }
