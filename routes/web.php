@@ -1,61 +1,33 @@
 <?php
 
-use App\Http\Livewire\Auth\ForgotPassword;
-use App\Http\Livewire\Auth\Login;
-use App\Http\Livewire\Auth\Register;
-use App\Http\Livewire\Auth\ResetPassword;
-use App\Http\Livewire\Billing;
 use Illuminate\Support\Facades\Route;
 use App\Http\Livewire\Dashboard;
-use App\Http\Livewire\ExampleLaravel\UserManagement;
-use App\Http\Livewire\ExampleLaravel\UserProfile;
-use App\Http\Livewire\Notifications;
-use App\Http\Livewire\Profile;
-use App\Http\Livewire\RTL;
-use App\Http\Livewire\StaticSignIn;
-use App\Http\Livewire\StaticSignUp;
-use App\Http\Livewire\Tables;
-use App\Http\Livewire\VirtualReality;
-use GuzzleHttp\Middleware;
+use App\Http\Livewire\InventoryManager;
+use App\Http\Livewire\PosSystem;
+use App\Http\Livewire\Auth\Login;
+use App\Http\Livewire\Auth\Register;
+use App\Http\Livewire\Auth\ForgotPassword;
+use App\Http\Livewire\Auth\ResetPassword;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
-*/
+// Public Route (For QR Code Scanning)
+Route::get('/menu/{userId}', \App\Http\Livewire\PublicMenu::class)->name('public.menu');
 
-Route::get('/', function(){
-    return redirect('sign-in');
-});
+// Auth Routes
+Route::get('login', Login::class)->name('login');
+Route::get('register', Register::class)->name('register');
+Route::get('forgot-password', ForgotPassword::class)->name('password.forgot'); // FIXED
+Route::get('reset-password', ResetPassword::class)->name('password.reset');
 
-Route::get('forgot-password', ForgotPassword::class)->middleware('guest')->name('password.forgot');
-Route::get('reset-password/{id}', ResetPassword::class)->middleware('signed')->name('reset-password');
-
-
-
-Route::get('sign-up', Register::class)->middleware('guest')->name('register');
-Route::get('sign-in', Login::class)->middleware('guest')->name('login');
-
-Route::get('user-profile', UserProfile::class)->middleware('auth')->name('user-profile');
-Route::get('user-management', UserManagement::class)->middleware('auth')->name('user-management');
-
-Route::group(['middleware' => 'auth'], function () {
-Route::get('dashboard', Dashboard::class)->name('dashboard');
-Route::get('billing', Billing::class)->name('billing');
-Route::get('profile', Profile::class)->name('profile');
-Route::get('tables', Tables::class)->name('tables');
-Route::get('notifications', Notifications::class)->name("notifications");
-Route::get('virtual-reality', VirtualReality::class)->name('virtual-reality');
-Route::get('static-sign-in', StaticSignIn::class)->name('static-sign-in');
-Route::get('static-sign-up', StaticSignUp::class)->name('static-sign-up');
-Route::get('rtl', RTL::class)->name('rtl');
-
-
-Route::get('inventory', InventoryManager::class)->name('inventory')->middleware('auth');
-Route::get('pos', PosSystem::class)->name('pos')->middleware('auth');
+Route::middleware('auth')->group(function () {
+    Route::get('/', Dashboard::class)->name('dashboard');
+    Route::get('dashboard', Dashboard::class);
+    
+    // Startup Modules
+    Route::get('inventory', InventoryManager::class)->name('inventory');
+    Route::get('pos', PosSystem::class)->name('pos');
+    
+    // Profile & Management
+    Route::get('profile', \App\Http\Livewire\ExampleLaravel\UserProfile::class)->name('user-profile');
+    Route::get('user-management', \App\Http\Livewire\ExampleLaravel\UserManagement::class)->name('user-management');
+    Route::get('billing', \App\Http\Livewire\Billing::class)->name('billing');
 });
