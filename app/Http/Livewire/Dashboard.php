@@ -9,10 +9,10 @@ use Illuminate\Support\Facades\Auth;
 class Dashboard extends Component {
 public function render() {
     return view('livewire.dashboard', [
-        'totalRevenue' => Order::where('user_id', Auth::id())->sum('total_amount'),
-        'orderCount' => Order::where('user_id', Auth::id())->count(),
-        'recentSales' => Order::where('user_id', Auth::id())->latest()->take(5)->get(),
-        'lowStock' => Product::where('user_id', Auth::id())->where('stock', '<', 5)->count()
+        'sales_today' => Order::where('user_id', auth()->id())->whereDate('created_at', now())->sum('total_amount'),
+        'total_customers' => Customer::where('user_id', auth()->id())->count(),
+        'low_stock' => Product::where('user_id', auth()->id())->where('stock', '<', 5)->count(),
+        'recent_orders' => Order::where('user_id', auth()->id())->latest()->take(5)->get()
     ]);
 }
 }

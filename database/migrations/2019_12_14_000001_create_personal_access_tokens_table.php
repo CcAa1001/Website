@@ -7,8 +7,6 @@ use Illuminate\Support\Facades\Schema;
 class CreatePersonalAccessTokensTable extends Migration
 {
     /**
-     * Run the migrations.
-     *
      * @return void
      */
     public function up()
@@ -25,8 +23,6 @@ class CreatePersonalAccessTokensTable extends Migration
     }
 
     /**
-     * Reverse the migrations.
-     *
      * @return void
      */
     public function down()

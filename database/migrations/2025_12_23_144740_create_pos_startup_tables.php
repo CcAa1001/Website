@@ -9,14 +9,14 @@ return new class extends Migration {
         Schema::create('categories', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Multi-tenant link
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->timestamps();
         });
 
         Schema::create('products', function (Blueprint $table) {
             $table->id();
             $table->foreignId('category_id')->constrained();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Vendor link
+            $table->foreignId('user_id')->constrained()->onDelete('cascade'); 
             $table->string('name');
             $table->decimal('price', 10, 2);
             $table->integer('stock')->default(0);
@@ -25,9 +25,9 @@ return new class extends Migration {
 
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Vendor link
+            $table->foreignId('user_id')->constrained()->onDelete('cascade'); 
             $table->decimal('total_amount', 10, 2);
-            $table->string('payment_method')->default('cash'); // 4. PAYMENT PROCESSING
+            $table->string('payment_method')->default('cash');
             $table->timestamps();
         });
 
