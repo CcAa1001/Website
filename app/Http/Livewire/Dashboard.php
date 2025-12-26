@@ -1,20 +1,34 @@
 <?php
+
 namespace App\Http\Livewire;
 
 use Livewire\Component;
-use App\Models\Order;
 use App\Models\Product;
-use App\Models\Customer;
+use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 
-class Dashboard extends Component {
-    public function render() {
-        $userId = Auth::id();
+class Dashboard extends Component
+{
+    public function render()
+    {
+        $todaySales = Order::where('user_id', Auth::id())
+            ->whereDate('created_at', today())
+            ->sum('total_amount');
+
+        $lowStockCount = Product::where('user_id', Auth::id())
+            ->where('stock', '<', 10)
+            ->count();
+
+        $recentOrders = Order::where('user_id', Auth::id())
+            ->latest()
+            ->take(5)
+            ->get();
+
         return view('livewire.dashboard', [
-            'sales_today' => Order::where('user_id', $userId)->whereDate('created_at', now())->sum('total_amount') ?? 0,
-            'total_customers' => Customer::where('user_id', $userId)->count(),
-            'low_stock' => Product::where('user_id', $userId)->where('stock', '<', 5)->count(),
-            'recent_orders' => Order::where('user_id', $userId)->with('customer')->latest()->take(5)->get()
+            'todaySales' => $todaySales,
+            'lowStockCount' => $lowStockCount,
+            'recentOrders' => $recentOrders,
+            'totalProducts' => Product::where('user_id', Auth::id())->count(),
         ]);
     }
 }
