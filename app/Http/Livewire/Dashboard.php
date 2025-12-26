@@ -3,32 +3,24 @@
 namespace App\Http\Livewire;
 
 use Livewire\Component;
-use App\Models\Product;
 use App\Models\Order;
-use Illuminate\Support\Facades\Auth;
 
 class Dashboard extends Component
 {
+    // Pre-defined bakery tables
+    public $tables = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
+
     public function render()
     {
-        $todaySales = Order::where('user_id', Auth::id())
-            ->whereDate('created_at', today())
-            ->sum('total_amount');
-
-        $lowStockCount = Product::where('user_id', Auth::id())
-            ->where('stock', '<', 10)
-            ->count();
-
-        $recentOrders = Order::where('user_id', Auth::id())
-            ->latest()
-            ->take(5)
-            ->get();
+        // Fetch data for the admin dashboard view
+        $recentOrders = Order::orderBy('created_at', 'desc')->take(5)->get();
+        $totalSales = Order::sum('total_amount');
+        $activeOrders = Order::where('status', 'pending')->count();
 
         return view('livewire.dashboard', [
-            'todaySales' => $todaySales,
-            'lowStockCount' => $lowStockCount,
             'recentOrders' => $recentOrders,
-            'totalProducts' => Product::where('user_id', Auth::id())->count(),
+            'totalSales' => $totalSales,
+            'activeOrders' => $activeOrders
         ]);
     }
 }
