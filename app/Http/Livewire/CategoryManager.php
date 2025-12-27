@@ -12,20 +12,26 @@ class CategoryManager extends Component
     public function save()
     {
         $this->validate(['name' => 'required|unique:categories,name']);
-        Category::create(['name' => $this->name]);
+        
+        Category::create([
+            'name' => $this->name,
+            'user_id' => auth()->id() // Perbaikan: Ambil ID admin yang sedang login
+        ]);
+
         $this->name = '';
-        session()->flash('message', 'Kategori berhasil ditambah!');
+        session()->flash('message', 'Kategori baru berhasil ditambahkan!');
     }
 
     public function delete($id)
     {
-        Category::find($id)->delete();
+        Category::findOrFail($id)->delete();
+        session()->flash('message', 'Kategori dihapus.');
     }
 
     public function render()
     {
         return view('livewire.category-manager', [
-            'categories' => Category::all()
-        ]);
+            'categories' => Category::orderBy('created_at', 'desc')->get()
+        ])->layout('layouts.app');
     }
 }

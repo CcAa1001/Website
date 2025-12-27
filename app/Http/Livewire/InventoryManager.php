@@ -12,14 +12,14 @@ class InventoryManager extends Component
     use WithFileUploads;
 
     public $name, $price, $category_id, $description, $image, $is_available = true;
-    public $productId;
-    public $isEditing = false;
+    public $productId, $isEditing = false;
 
     protected $rules = [
         'name' => 'required|min:3',
         'price' => 'required|numeric',
         'category_id' => 'required',
-        'image' => 'nullable|image|max:1024',
+        'description' => 'nullable|string',
+        'image' => 'nullable|image|max:2048', // Max 2MB
     ];
 
     public function save()
@@ -32,6 +32,7 @@ class InventoryManager extends Component
             'category_id' => $this->category_id,
             'description' => $this->description,
             'is_available' => $this->is_available,
+            'user_id' => auth()->id(), 
         ];
 
         if ($this->image) {
@@ -40,8 +41,10 @@ class InventoryManager extends Component
 
         Product::updateOrCreate(['id' => $this->productId], $data);
 
-        $this->reset();
-        session()->flash('message', 'Product saved successfully!');
+        $this->reset(['name', 'price', 'category_id', 'description', 'image', 'productId', 'isEditing']);
+
+        // PERBAIKAN DI SINI: Ganti dispatchBrowserEvent menjadi dispatch
+        $this->dispatch('alert', type: 'success', message: 'Roti Berhasil Disimpan!');
     }
 
     public function edit($id)
@@ -59,8 +62,8 @@ class InventoryManager extends Component
     public function render()
     {
         return view('livewire.inventory-manager', [
-            'products' => Product::with('category')->get(),
+            'products' => Product::with('category')->latest()->get(),
             'categories' => Category::all()
-        ]);
+        ])->layout('layouts.app');
     }
 }

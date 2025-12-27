@@ -78,3 +78,16 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('livewire:init', () => {
+       Livewire.on('alert', (event) => {
+           // event[0] biasanya berisi data di Livewire v3
+           const type = event.type;
+           const message = event.message;
+           
+           // Contoh menggunakan library SweetAlert atau Toast biasa
+           alert(message); 
+       });
+    });
+</script>

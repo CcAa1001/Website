@@ -4,21 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Order extends Model {
-    // Added table_number and status to allow database saving
+class Order extends Model
+{
     protected $fillable = [
-        'user_id', 
-        'customer_id', 
-        'table_number', 
-        'total_amount', 
-        'status'
+        'table_number', 'total_amount', 'status', 'user_id'
     ];
 
     public function items() {
         return $this->hasMany(OrderItem::class);
-    }
-
-    public function customer() {
-        return $this->belongsTo(Customer::class);
     }
 }

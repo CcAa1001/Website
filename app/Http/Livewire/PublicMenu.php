@@ -3,27 +3,30 @@
 namespace App\Http\Livewire;
 
 use Livewire\Component;
-use App\Models\Product; //
-use App\Models\Order;   //
-use App\Models\OrderItem; //
-use App\Models\Category; //
+use App\Models\Product;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Category;
+use Illuminate\Support\Str;
 
 class PublicMenu extends Component
 {
     public $tableId;
+    public $search = '';
     public $category = 'All';
     public $cart = [];
     public $showCart = false;
     public $orderPlaced = false;
 
+    // Hanya satu fungsi mount untuk keamanan dan nomor meja
     public function mount($tableId = null)
     {
         $this->tableId = $tableId;
-        
-        // Security check: URLs must have ?key=...
         $validToken = request()->query('key');
+        
+        // Proteksi: Hanya bisa diakses lewat QR code dengan key yang benar
         if ($validToken !== env('BAKERY_ORDER_KEY', 'bakery123')) {
-            abort(403, 'Unauthorized. Please scan the QR code at your table.');
+            abort(403, 'Akses Ditolak. Harap scan QR Code resmi di meja kami.');
         }
     }
 
@@ -42,7 +45,7 @@ class PublicMenu extends Component
                 'image' => $product->image
             ];
         }
-        $this->dispatchBrowserEvent('item-added');
+        $this->dispatchBrowserEvent('alert', ['type' => 'success', 'message' => $product->name . ' ditambahkan!']);
     }
 
     public function updateQty($id, $delta)
@@ -85,14 +88,19 @@ class PublicMenu extends Component
     public function render()
     {
         $categories = Category::pluck('name')->toArray();
+        
         $products = Product::where('is_available', true)
             ->when($this->category !== 'All', function($q) {
                 return $q->whereHas('category', fn($c) => $c->where('name', $this->category));
-            })->get();
+            })
+            ->when($this->search, function($q) {
+                return $q->where('name', 'ilike', '%' . $this->search . '%');
+            })
+            ->get();
 
         return view('livewire.public-menu', [
             'products' => $products,
             'categories' => array_merge(['All'], $categories)
-        ])->layout('layouts.base'); //
+        ])->layout('layouts.base');
     }
 }
