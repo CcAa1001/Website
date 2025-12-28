@@ -93,5 +93,40 @@
     <script src="{{ asset('assets') }}/js/material-dashboard.min.js?v=3.0.0"></script>
     @livewireScripts
 </body>
+<script>
+    // Fungsi untuk menerapkan tema saat halaman dimuat
+    function applySavedTheme() {
+        const savedColor = localStorage.getItem('sidebar-color') || 'primary';
+        const isDarkMode = localStorage.getItem('dark-mode') === 'true';
 
+        // Terapkan warna sidebar active
+        const activeLink = document.querySelector('.nav-link.active');
+        if (activeLink) {
+            // Hapus semua class bg-gradient lama
+            activeLink.className = activeLink.className.replace(/\bbg-gradient-\w+/g, '');
+            activeLink.classList.add('bg-gradient-' + savedColor);
+        }
+
+        // Terapkan Dark Mode
+        if (isDarkMode) {
+            document.body.classList.add('dark-version');
+        }
+    }
+
+    // Monitor klik di configurator (Plugins)
+    document.addEventListener('click', function (event) {
+        if (event.target.hasAttribute('data-color')) {
+            const color = event.target.getAttribute('data-color');
+            localStorage.setItem('sidebar-color', color);
+        }
+        if (event.target.id === 'dark-version') {
+            setTimeout(() => {
+                const isDark = document.body.classList.contains('dark-version');
+                localStorage.setItem('dark-mode', isDark);
+            }, 100);
+        }
+    });
+
+    window.onload = applySavedTheme;
+</script>
 </html>

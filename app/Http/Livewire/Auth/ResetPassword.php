@@ -4,8 +4,7 @@ namespace App\Http\Livewire\Auth;
 
 use Livewire\Component;
 use App\Models\User;
-Use Str;
-use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Str;
 
 class ResetPassword extends Component
 {
@@ -14,36 +13,33 @@ class ResetPassword extends Component
     public $passwordConfirmation = '';
     public $urlID = '';
 
-    protected $rules= [
+    protected $rules = [
         'email' => 'required|email',
         'password' => 'required|min:8|same:passwordConfirmation',
     ];
+
+    public function mount($id) {
+        $existingUser = User::find($id);
+        // Perbaikan: Jangan gunakan intval karena ID adalah UUID (string)
+        $this->urlID = $existingUser->id;
+    }
+
+    public function update() {
+        $this->validate(); 
+        $existingUser = User::where('email', $this->email)->first();
+
+        if($existingUser && $existingUser->id === $this->urlID) { 
+            $existingUser->update([
+                'password' => $this->password
+            ]);
+            return redirect('sign-in')->with('status', 'Your password has been reset!');
+        } else {
+            return back()->with('email', "We can't find any user with that email address.");
+        }
+    }
 
     public function render()
     {
         return view('livewire.auth.reset-password');
     }
-
-    public function mount($id) {
-        $existingUser = User::find($id);
-        $this->urlID = intval($existingUser->id);
-    }
-
-    public function update(){
-        
-        $this->validate(); 
-          
-        $existingUser = User::where('email', $this->email)->first();
-
-        if($existingUser && $existingUser->id == $this->urlID) { 
-            $existingUser->update([
-                'password' => $this->password
-            ]);
-            redirect('sign-in')->with('status', 'Your password has been reset!');
-        } else {
-            return back()->with('email', "We can't find any user with that email address.");
-        }
-    
-    }
-
 }

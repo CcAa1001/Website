@@ -13,7 +13,7 @@ class Dashboard extends Component
     public function render()
     {
         $recentOrders = Order::orderBy('created_at', 'desc')->take(5)->get();
-        $totalSales = Order::sum('total_amount');
+        $totalSales = Order::sum('grand_total');
         
         // This line will now work because the 'status' column exists
         $activeOrders = Order::where('status', 'pending')->count(); 

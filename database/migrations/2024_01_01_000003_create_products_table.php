@@ -12,8 +12,11 @@ return new class extends Migration {
             $table->foreignUuid('category_id')->nullable()->constrained('categories')->onDelete('set null');
             $table->string('name');
             $table->string('slug');
-            $table->decimal('base_price', 15, 2);
+            $table->text('description')->nullable(); // Tambahkan ini
+            $table->string('image')->nullable();       // Tambahkan ini
+            $table->decimal('base_price', 15, 2);    // Gunakan base_price sesuai skema profesional
             $table->integer('stock_quantity')->default(0);
+            $table->boolean('is_available')->default(true); // INI YANG KURANG
             $table->timestamps();
             $table->softDeletes();
 

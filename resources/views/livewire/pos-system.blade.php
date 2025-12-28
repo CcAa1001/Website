@@ -23,6 +23,19 @@
                 <div class="card-header bg-gradient-primary">
                     <h6 class="text-white">Current Transaction</h6>
                 </div>
+                <div class="d-flex justify-content-between">
+                    <span>Subtotal:</span>
+                    <span>${{ number_format($subtotal, 2) }}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Tax (11%):</span>
+                    <span>${{ number_format($tax, 2) }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <strong>TOTAL:</strong>
+                    <h4 class="text-primary font-weight-bold">${{ number_format($grand_total, 2) }}</h4>
+                </div>
                 <div class="card-body">
                     <ul class="list-group list-group-flush">
                         @foreach($cart as $id => $item)
@@ -35,7 +48,7 @@
                     <hr>
                     <div class="d-flex justify-content-between">
                         <strong>TOTAL:</strong>
-                        <h4 class="text-primary font-weight-bold">${{ number_format($total, 2) }}</h4>
+                        <h4 class="text-primary font-weight-bold">${{ number_format($grand_total, 2) }}</h4>
                     </div>
                     <button wire:click="checkout" class="btn bg-gradient-success w-100 mt-3" @if(empty($cart)) disabled @endif>Complete Order</button>
                 </div>
