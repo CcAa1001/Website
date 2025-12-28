@@ -46,4 +46,45 @@
     </main>
     <x-plugins></x-plugins>
     @endif
+    <script>
+        // Fungsi untuk menerapkan tema yang tersimpan
+        function applySavedTheme() {
+            const savedColor = localStorage.getItem('theme-color') || 'primary';
+            const isDark = localStorage.getItem('dark-mode') === 'true';
+
+            // 1. Terapkan Warna Sidebar
+            const activeLink = document.querySelector(".nav-link.active");
+            if (activeLink) {
+                // Hapus class gradient lama
+                activeLink.className = activeLink.className.replace(/\bbg-gradient-\w+/g, '');
+                activeLink.classList.add('bg-gradient-' + savedColor);
+            }
+
+            // 2. Terapkan Dark Mode
+            if (isDark) {
+                document.body.classList.add('dark-version');
+                const darkBtn = document.getElementById('dark-version');
+                if (darkBtn) darkBtn.setAttribute("checked", "true");
+            }
+        }
+
+        // Monitor klik pada pilihan warna di Configurator
+        document.addEventListener('click', function (e) {
+            if (e.target.hasAttribute('onclick') && e.target.getAttribute('onclick').includes('sidebarColor')) {
+                const color = e.target.getAttribute('data-color');
+                localStorage.setItem('theme-color', color);
+            }
+            
+            if (e.target.id === 'dark-version') {
+                setTimeout(() => {
+                    const isDark = document.body.classList.contains('dark-version');
+                    localStorage.setItem('dark-mode', isDark);
+                }, 100);
+            }
+        });
+
+        // Jalankan saat halaman dimuat
+        window.addEventListener('load', applySavedTheme);
+        document.addEventListener('livewire:load', applySavedTheme); // Untuk kompatibilitas Livewire
+    </script>
 </x-layouts.base>
