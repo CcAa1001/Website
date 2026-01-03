@@ -30,20 +30,27 @@ class PublicMenu extends Component
     public function mount($tableNumber)
     {
         $this->tableNumber = $tableNumber;
-        
-        // Cari meja berdasarkan nomor (Simple version)
         $table = Table::where('table_number', $tableNumber)->first();
 
         if (!$table) {
-            abort(404, 'Meja tidak ditemukan atau kode salah.');
+            abort(404, 'Table not found. Please scan a valid QR.');
         }
 
         $this->tableId = $table->id;
         $this->outletId = $table->outlet_id;
-        // Ambil tenant_id dari outlet relation
+        
+        // Robust check for Tenant ID
         $this->tenantId = $table->outlet ? $table->outlet->tenant_id : null;
 
-        if (!$this->tenantId) abort(500, 'Konfigurasi Outlet Error');
+        // Fallback: If table has no outlet, try to find the first tenant (for testing)
+        if (!$this->tenantId) {
+             $firstTenant = \App\Models\Tenant::first();
+             $this->tenantId = $firstTenant ? $firstTenant->id : null;
+        }
+
+        if (!$this->tenantId) {
+            abort(500, 'System Configuration Error: No Tenant associated with this outlet.');
+        }
 
         $this->categories = Category::where('tenant_id', $this->tenantId)->get();
         $this->loadProducts();
@@ -52,11 +59,9 @@ class PublicMenu extends Component
     public function loadProducts()
     {
         $query = Product::where('tenant_id', $this->tenantId)->where('is_available', true);
-
         if ($this->selectedCategory != 'all') {
             $query->where('category_id', $this->selectedCategory);
         }
-
         $this->products = $query->get();
     }
 
@@ -88,45 +93,27 @@ class PublicMenu extends Component
     {
         if(isset($this->cart[$productId])) {
             $this->cart[$productId]['qty'] += $change;
-            if($this->cart[$productId]['qty'] <= 0) {
-                unset($this->cart[$productId]);
-            }
+            if($this->cart[$productId]['qty'] <= 0) unset($this->cart[$productId]);
         }
     }
 
     public function placeOrder()
     {
-        $this->validate([
-            'customerName' => 'required|min:3',
-            'cart' => 'required|array|min:1'
-        ], [
-            'customerName.required' => 'Nama harus diisi',
-            'cart.required' => 'Pilih minimal 1 menu'
-        ]);
+        $this->validate(['customerName' => 'required|min:2', 'cart' => 'required|array|min:1']);
 
         DB::beginTransaction();
         try {
-            $subtotal = 0;
-            foreach($this->cart as $item) {
-                $subtotal += $item['price'] * $item['qty'];
-            }
-            
+            $subtotal = collect($this->cart)->sum(fn($i) => $i['price'] * $i['qty']);
             $tax = $subtotal * 0.11;
-            $grandTotal = $subtotal + $tax;
 
             $order = Order::create([
                 'tenant_id' => $this->tenantId,
                 'outlet_id' => $this->outletId,
-                'table_id' => $this->tableId,
+                'table_id' => $table->id ?? null,
                 'order_number' => 'ORD-' . strtoupper(Str::random(6)),
-                'order_type' => 'dine_in',
-                'order_source' => 'qr_code',
                 'customer_name' => $this->customerName,
                 'status' => 'pending',
-                'payment_status' => 'unpaid',
-                'subtotal' => $subtotal,
-                'tax_amount' => $tax,
-                'grand_total' => $grandTotal,
+                'grand_total' => $subtotal + $tax,
                 'ordered_at' => now(),
             ]);
 
@@ -142,20 +129,17 @@ class PublicMenu extends Component
             }
 
             DB::commit();
-
             $this->cart = [];
             $this->orderSuccess = true;
             $this->orderNumberStr = $order->order_number;
-
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Gagal: ' . $e->getMessage());
+            session()->flash('error', 'Failed: ' . $e->getMessage());
         }
     }
 
     public function render()
     {
-        // Menggunakan layout 'base' (layout kosong tanpa sidebar admin)
         return view('livewire.public-menu')->layout('layouts.base');
     }
 }

@@ -18,17 +18,12 @@ class PosSystem extends Component
     public $selectedCategory = null;
     public $search = '';
     
-    // Perbaikan: Nama variabel disesuaikan dengan View (Blade)
     public $subtotal = 0;
-    public $tax = 0;           // Sebelumnya $taxAmount
-    public $grand_total = 0;   // Sebelumnya $grandTotal
-    public $taxRate = 0.11;    // 11% PPN
+    public $tax = 0;
+    public $grand_total = 0;
+    public $taxRate = 0.11;
 
-    // Checkout Data
     public $customerName = 'Guest';
-    public $paymentMethod = 'cash';
-    public $paidAmount = 0;
-    public $changeAmount = 0;
 
     public function mount()
     {
@@ -40,28 +35,18 @@ class PosSystem extends Component
     {
         $user = auth()->user();
         if($user && $user->tenant_id) {
-            $this->categories = Category::where('tenant_id', $user->tenant_id)
-                ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->get();
+            $this->categories = Category::where('tenant_id', $user->tenant_id)->get();
         }
     }
 
     public function loadProducts()
     {
         $user = auth()->user();
-        if(!$user || !$user->tenant_id) return;
+        if(!$user) return;
 
-        $query = Product::where('tenant_id', $user->tenant_id)
-            ->where('is_available', true);
-
-        if ($this->selectedCategory) {
-            $query->where('category_id', $this->selectedCategory);
-        }
-
-        if ($this->search) {
-            $query->where('name', 'like', '%' . $this->search . '%');
-        }
+        $query = Product::where('tenant_id', $user->tenant_id)->where('is_available', true);
+        if ($this->selectedCategory) $query->where('category_id', $this->selectedCategory);
+        if ($this->search) $query->where('name', 'ilike', '%' . $this->search . '%');
 
         $this->products = $query->orderBy('name')->get();
     }
@@ -72,24 +57,19 @@ class PosSystem extends Component
         $this->loadProducts();
     }
 
-    public function updatedSearch()
-    {
-        $this->loadProducts();
-    }
+    public function updatedSearch() { $this->loadProducts(); }
 
     public function addToCart($productId)
     {
         $product = Product::find($productId);
-        
+        if (!$product) return;
+
         if (isset($this->cart[$productId])) {
-            $this->cart[$productId]['qty']++; // View pakai 'qty', bukan 'quantity'
+            $this->cart[$productId]['qty']++;
         } else {
             $this->cart[$productId] = [
-                'id' => $product->id,
-                'name' => $product->name,
-                'price' => $product->base_price,
-                'qty' => 1, // View pakai 'qty'
-                'sku' => $product->sku
+                'id' => $product->id, 'name' => $product->name,
+                'price' => $product->base_price, 'qty' => 1, 'sku' => $product->sku
             ];
         }
         $this->calculateTotal();
@@ -98,59 +78,35 @@ class PosSystem extends Component
     public function removeFromCart($productId)
     {
         if (isset($this->cart[$productId])) {
-            unset($this->cart[$productId]);
-            $this->calculateTotal();
+            $this->cart[$productId]['qty']--;
+            if($this->cart[$productId]['qty'] <= 0) unset($this->cart[$productId]);
         }
+        $this->calculateTotal();
     }
 
     public function calculateTotal()
     {
         $this->subtotal = 0;
-        foreach ($this->cart as $item) {
-            $this->subtotal += $item['price'] * $item['qty'];
-        }
-
-        // Hitung Pajak & Total (Nama variabel sudah diperbaiki)
+        foreach ($this->cart as $item) $this->subtotal += $item['price'] * $item['qty'];
         $this->tax = $this->subtotal * $this->taxRate;
         $this->grand_total = $this->subtotal + $this->tax;
-        
-        if($this->paidAmount > 0) {
-            $this->changeAmount = $this->paidAmount - $this->grand_total;
-        } else {
-            $this->changeAmount = 0;
-        }
-    }
-
-    public function updatedPaidAmount()
-    {
-        $this->calculateTotal();
     }
 
     public function checkout()
     {
-        if (empty($this->cart)) {
-            session()->flash('error', 'Keranjang kosong!');
-            return;
-        }
-
-        if ($this->paidAmount < $this->grand_total && $this->paymentMethod == 'cash') {
-            session()->flash('error', 'Pembayaran kurang!');
-            return;
-        }
+        if (empty($this->cart)) return;
 
         DB::beginTransaction();
-
         try {
             $user = auth()->user();
-            
             $order = Order::create([
                 'tenant_id' => $user->tenant_id,
                 'outlet_id' => $user->outlet_id,
                 'user_id' => $user->id,
-                'order_number' => 'ORD-' . strtoupper(Str::random(8)),
+                'order_number' => 'POS-' . strtoupper(Str::random(8)),
                 'order_type' => 'dine_in',
                 'customer_name' => $this->customerName,
-                'status' => 'completed',
+                'status' => 'paid',
                 'payment_status' => 'paid',
                 'subtotal' => $this->subtotal,
                 'tax_amount' => $this->tax,
@@ -163,7 +119,6 @@ class PosSystem extends Component
                     'order_id' => $order->id,
                     'product_id' => $item['id'],
                     'product_name' => $item['name'],
-                    'sku' => $item['sku'],
                     'quantity' => $item['qty'],
                     'unit_price' => $item['price'],
                     'subtotal' => $item['price'] * $item['qty'],
@@ -171,23 +126,14 @@ class PosSystem extends Component
             }
 
             DB::commit();
-
             $this->cart = [];
-            $this->paidAmount = 0;
-            $this->changeAmount = 0;
-            $this->customerName = 'Guest';
             $this->calculateTotal();
-
-            session()->flash('success', 'Transaksi Berhasil!');
-
+            session()->flash('success', 'Order Completed!');
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Terjadi kesalahan: ' . $e->getMessage());
+            session()->flash('error', $e->getMessage());
         }
     }
 
-    public function render()
-    {
-        return view('livewire.pos-system');
-    }
+    public function render() { return view('livewire.pos-system'); }
 }
