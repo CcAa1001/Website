@@ -2,44 +2,58 @@
 
 namespace App\Http\Livewire\Auth;
 
-use Illuminate\Validation\ValidationException;
 use Livewire\Component;
+use App\Models\User;
 
 class Login extends Component
 {
+    public $email = '';
+    public $password = '';
+    public $remember_me = false;
 
-    public $email='';
-    public $password='';
-
-    protected $rules= [
-        'email' => 'required|email',
-        'password' => 'required'
-
+    protected $rules = [
+        'email' => 'required|email:rfc,dns',
+        'password' => 'required|min:6',
     ];
 
-    public function render()
-    {
-        return view('livewire.auth.login');
+    public function mount() {
+        if (auth()->user()) {
+            return redirect()->intended('/dashboard');
+        }
     }
 
-    public function mount() {
-      
-        $this->fill(['email' => 'admin@material.com', 'password' => 'secret']);    
-    }
-    
+    // UBAH DARI 'login' MENJADI 'store' AGAR SESUAI DENGAN TOMBOL HTML
     public function store()
     {
         $attributes = $this->validate();
 
-        if (! auth()->attempt($attributes)) {
-            throw ValidationException::withMessages([
-                'email' => 'Your provided credentials could not be verified.'
-            ]);
+        if (!auth()->attempt(['email' => $this->email, 'password' => $this->password], $this->remember_me)) {
+            $this->addError('email', trans('auth.failed'));
+            return;
         }
 
-        session()->regenerate();
+        $user = auth()->user();
 
-        return redirect('/dashboard');
+        // Validasi Status Aktif
+        if (!$user->is_active) {
+            auth()->logout();
+            $this->addError('email', 'Akun Anda dinonaktifkan.');
+            return;
+        }
 
+        // Validasi Tenant Aktif
+        $tenant = \App\Models\Tenant::find($user->tenant_id);
+        if ($tenant && !$tenant->is_active) {
+            auth()->logout();
+            $this->addError('email', 'Langganan restoran ini sudah tidak aktif.');
+            return;
+        }
+
+        return redirect()->intended('/dashboard');
+    }
+
+    public function render()
+    {
+        return view('livewire.auth.login');
     }
 }

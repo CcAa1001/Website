@@ -3,24 +3,26 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\HasUuid;
 
 class Outlet extends Model
 {
-    protected $keyType = 'string';
-    public $incrementing = false;
+    use HasUuid, SoftDeletes;
 
-    protected $fillable = ['id', 'tenant_id', 'code', 'name'];
+    protected $fillable = [
+        'tenant_id', 'code', 'name', 'outlet_type',
+        'address', 'city', 'phone', 'email',
+        'latitude', 'longitude', 'operating_hours',
+        'tax_rate', 'service_charge_rate', 'is_active'
+    ];
 
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(function ($model) {
-            if (empty($model->id)) {
-                $model->id = (string) Str::uuid();
-            }
-        });
-    }
+    protected $casts = [
+        'operating_hours' => 'array',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'is_active' => 'boolean',
+    ];
 
     public function tenant()
     {

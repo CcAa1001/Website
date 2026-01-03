@@ -5,46 +5,40 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
-use Illuminate\Support\Str;
+use App\Traits\HasUuid;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
-
-    // Konfigurasi UUID
-    protected $keyType = 'string';
-    public $incrementing = false;
+    use HasApiTokens, HasFactory, Notifiable, HasUuid, SoftDeletes;
 
     protected $fillable = [
         'tenant_id',
         'outlet_id',
+        'role_id',
+        'employee_code',
         'name',
         'email',
         'password',
-        'location',
         'phone',
-        'about',
+        'avatar_url',
+        'pin_code',
+        'is_active',
+        'last_login_at',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'pin_code',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+        'is_active' => 'boolean',
     ];
-
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(function ($model) {
-            if (empty($model->id)) {
-                $model->id = (string) Str::uuid();
-            }
-        });
-    }
 
     public function setPasswordAttribute($password)
     {

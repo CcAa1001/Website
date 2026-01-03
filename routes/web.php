@@ -24,6 +24,7 @@ use App\Http\Livewire\Auth\ForgotPassword;
 // Public Menu (QR Code Access)
 Route::get('/order/{tableId?}', PublicMenu::class)->name('public.menu');
 // Authentication Routes
+Route::get('/order/{tableNumber}', PublicMenu::class)->name('public.menu');
 
 Route::get('login', Login::class)->name('login');
 Route::get('register', Register::class)->name('register');
