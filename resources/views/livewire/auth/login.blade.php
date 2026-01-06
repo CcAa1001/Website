@@ -1,83 +1,107 @@
+<div class="page-header min-vh-100" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+    <style>
+        /* Modern Mesh Background (Optional alternative to the gradient above) */
+        .page-header {
+            background-color: #e5e5f7;
+            background-image:  radial-gradient(#4433ff 0.5px, transparent 0.5px), radial-gradient(#4433ff 0.5px, #e5e5f7 0.5px);
+            background-size: 20px 20px;
+            background-position: 0 0,10px 10px;
+            /* Or use a soft solid color: background: #f8f9fa; */
+        }
 
-            <div class="container my-auto mt-5">
-                <div class="row signin-margin">
-                    <div class="col-lg-4 col-md-8 col-12 mx-auto">
-                        <div class="card z-index-0 fadeIn3 fadeInBottom">
-                            <div class="card-header p-0 position-relative mt-n4 mx-3 z-index-2">
-                                <div class="bg-gradient-primary shadow-primary border-radius-lg py-3 pe-1">
-                                    <h4 class="text-white font-weight-bolder text-center mt-2 mb-0">Sign in</h4>
-                                    <div class="row mt-3">
-                                        <h6 class='text-white text-center'>
-                                            <span class="font-weight-normal">Email:</span> admin@material.com
-                                            <br>
-                                            <span class="font-weight-normal">Password:</span> secret</h6>
-                                        <div class="col-2 text-center ms-auto">
-                                            <a class="btn btn-link px-3" href="javascript:;">
-                                                <i class="fa fa-facebook text-white text-lg"></i>
-                                            </a>
-                                        </div>
-                                        <div class="col-2 text-center px-1">
-                                            <a class="btn btn-link px-3" href="javascript:;">
-                                                <i class="fa fa-github text-white text-lg"></i>
-                                            </a>
-                                        </div>
-                                        <div class="col-2 text-center me-auto">
-                                            <a class="btn btn-link px-3" href="javascript:;">
-                                                <i class="fa fa-google text-white text-lg"></i>
-                                            </a>
-                                        </div>
-                                    </div>
+        /* Enhanced Glass Wrapper */
+        .glass-container {
+            background: rgba(255, 255, 255, 0.4); /* More transparent for better glass effect */
+            backdrop-filter: blur(20px);          /* Stronger blur */
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 40px;                  /* Softer corners */
+            border: 1px solid rgba(255, 255, 255, 0.7); 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        /* Make the internal card also slightly transparent */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8) !important;
+            border: none !important;
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .btn-round {
+            border-radius: 12px !important;
+            text-transform: none;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+    </style>
+    
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-xl-5 col-lg-6 col-md-8"> <div class="glass-container p-3 fade-in-up">
+                    <div class="card glass-card shadow-none overflow-hidden" style="border-radius: 30px;">
+                        <div class="card-body p-5">
+                            <div class="text-center mb-5">
+                                <h3 class="font-weight-bolder text-dark">Welcome</h3>
+                                <p class="text-secondary text-sm">Please enter your credentials</p>
+                            </div>
+
+                            <form wire:submit="store" class="text-start">
+                                @if (Session::has('status'))
+                                <div class="alert alert-success text-white text-xs mb-3 p-2 rounded" role="alert">
+                                    {{ Session::get('status') }}
                                 </div>
-                            </div>
-                            <div class="card-body">
-                                <form wire:submit='store'>
-                                    @if (Session::has('status'))
-                                    <div class="alert alert-success alert-dismissible text-white" role="alert">
-                                        <span class="text-sm">{{ Session::get('status') }}</span>
-                                        <button type="button" class="btn-close text-lg py-3 opacity-10"
-                                            data-bs-dismiss="alert" aria-label="Close">
-                                            <span aria-hidden="true">&times;</span>
-                                        </button>
-                                    </div>
-                                    @endif
-                                    <div class="input-group input-group-outline mt-3 @if(strlen($email ?? '') > 0) is-filled @endif">
-                                        <label class="form-label">Email</label>
-                                        <input wire:model.live='email' type="email" class="form-control">
-                                    </div>
-                                    @error('email')
-                                    <p class='text-danger inputerror'>{{ $message }} </p>
-                                    @enderror
+                                @endif
 
-                                    <div class="input-group input-group-outline mt-3 @if(strlen($password ?? '') > 0) is-filled @endif">
-                                        <label class="form-label">Password</label>
-                                        <input wire:model.live="password" type="password" class="form-control"
-                                             >
+                                @error('email')
+                                <div class="alert alert-danger text-white text-xs mb-3 p-2 rounded" role="alert">
+                                    {{ $message }}
+                                </div>
+                                @enderror
+
+                                <div class="input-group input-group-outline mb-4 @if(strlen($email ?? '') > 0) is-filled @endif">
+                                    <label class="form-label">Email</label>
+                                    <input wire:model.live="email" type="email" class="form-control">
+                                </div>
+
+                                <div class="input-group input-group-outline mb-4 @if(strlen($password ?? '') > 0) is-filled @endif">
+                                    <label class="form-label">Password</label>
+                                    <input wire:model.live="password" type="password" class="form-control">
+                                </div>
+
+                                <div class="d-flex justify-content-between align-items-center mb-4">
+                                    <div class="form-check form-switch p-0 m-0 d-flex align-items-center">
+                                        <input class="form-check-input ms-0" type="checkbox" wire:model="remember" id="rememberMe">
+                                        <label class="form-check-label mb-0 ms-2 text-sm text-secondary" for="rememberMe">Remember</label>
                                     </div>
-                                    @error('password')
-                                    <p class='text-danger inputerror'>{{ $message }} </p>
-                                    @enderror
-                                    <div class="form-check form-switch d-flex align-items-center my-3">
-                                        <input class="form-check-input" type="checkbox" id="rememberMe">
-                                        <label class="form-check-label mb-0 ms-2" for="rememberMe">Remember
-                                            me</label>
-                                    </div>
-                                    <div class="text-center">
-                                        <button type="submit" class="btn bg-gradient-primary w-100 my-4 mb-2">Sign
-                                            in</button>
-                                    </div>
-                                    <p class="mt-4 text-sm text-center">
-                                        Don't have an account?
-                                        <a href="{{ route('register') }}"
-                                            class="text-primary text-gradient font-weight-bold">Sign up</a>
-                                    </p>
-                                    <p class="text-sm text-center">
-                                        Forgot your password? Reset your password
-                                        <a href="{{ route('password.forgot') }}"
-                                            class="text-primary text-gradient font-weight-bold">here</a>
-                                    </p>
-                                </form>
-                            </div>
+                                    <a href="{{ route('password.forgot') }}" class="text-primary text-xs font-weight-bold">Forgot?</a>
+                                </div>
+
+                                <button type="submit" class="btn bg-gradient-primary w-100 btn-lg mb-0 btn-round shadow-primary">
+                                    Sign In
+                                </button>
+                            </form>
                         </div>
                     </div>
+                </div> 
+                
+                <div class="text-center mt-4">
+                    <p class="text-sm text-secondary">
+                        Don't have an account? <a href="#" class="text-primary font-weight-bold">Contact Admin</a>
+                    </p>
                 </div>
             </div>
+        </div>
+    </div>
+</div>

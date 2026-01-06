@@ -9,22 +9,24 @@ class Login extends Component
 {
     public $email = '';
     public $password = '';
+    public $remember = false;
 
     protected $rules = [
         'email' => 'required|email',
         'password' => 'required',
     ];
 
-    public function login()
+    // FIX: Mengubah nama fungsi dari 'login' ke 'store' sesuai wire:submit di view
+    public function store()
     {
         $credentials = $this->validate();
 
-        if (Auth::attempt($credentials)) {
+        if (Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
             session()->regenerate();
             return redirect()->intended('/dashboard');
         }
 
-        $this->addError('email', 'Email atau password salah.');
+        $this->addError('email', 'Kombinasi email dan password tidak ditemukan.');
     }
 
     public function render()

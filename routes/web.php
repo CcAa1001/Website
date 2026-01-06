@@ -17,7 +17,7 @@ Route::get('/order/{tableNumber}', PublicMenu::class)->name('public.menu');
 
 // Auth Routes
 Route::get('login', Login::class)->name('login');
-Route::get('register', Register::class)->name('register');
+// Route::get('register', Register::class)->name('register');
 Route::get('forgot-password', ForgotPassword::class)->name('password.forgot');
 
 // Dashboard & Admin

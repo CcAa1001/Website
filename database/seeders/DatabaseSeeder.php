@@ -3,78 +3,55 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 use App\Models\Tenant;
 use App\Models\Outlet;
 use App\Models\Role;
-use App\Models\User;
-use App\Models\Category;
-use App\Models\Product;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     public function run()
     {
-        // 1. Buat Tenant (Restoran Utama)
+        // 1. Buat Tenant (Perusahaan)
         $tenant = Tenant::create([
-            'code' => 'RESTO-001',
-            'name' => 'Restoran Nusantara',
-            'business_type' => 'restaurant',
-            'email' => 'admin@resto.com',
+            'code' => 'ADMIN-HQ',
+            'name' => 'Admin Headquarters',
+            'email' => 'admin@secret.com',
             'is_active' => true,
         ]);
 
-        // 2. Buat Outlet (Cabang Pusat)
+        // 2. Buat Outlet Default
         $outlet = Outlet::create([
             'tenant_id' => $tenant->id,
-            'code' => 'JKT-01',
-            'name' => 'Cabang Jakarta Pusat',
-            'outlet_type' => 'dine_in',
+            'code' => 'HQ-01',
+            'name' => 'Main Office',
             'is_active' => true,
         ]);
 
-        // 3. Buat Roles
-        $roleSuperAdmin = Role::create([
+        // 3. Buat Role Super Admin
+        $role = Role::create([
             'tenant_id' => $tenant->id,
             'name' => 'Super Admin',
-            'slug' => 'super_admin',
-            'permissions' => ['*'], // Akses semua
+            'slug' => 'super-admin',
+            'permissions' => ['*'], // Akses ke semua fitur
             'is_system' => true,
         ]);
-        
-        $roleCashier = Role::create([
-            'tenant_id' => $tenant->id,
-            'name' => 'Cashier',
-            'slug' => 'cashier',
-            'permissions' => ['pos.access', 'orders.create'], 
-        ]);
 
-        // 4. Buat User Admin (Untuk Login Pertama)
+        // 4. Buat User Admin (INI AKUN ANDA)
         User::create([
             'tenant_id' => $tenant->id,
             'outlet_id' => $outlet->id,
-            'role_id' => $roleSuperAdmin->id,
-            'name' => 'Admin Utama',
-            'email' => 'admin@material.com', // Email default template material dashboard
-            'password' => 'secret', // Password akan di-hash otomatis oleh Model User (setPasswordAttribute)
+            'role_id' => $role->id,
+            'name' => 'Super Administrator',
+            'email' => 'admin@admin.com', // Email Login
+            'password' => Hash::make('secret'), // Password Login (Ganti 'secret' dengan password pilihan Anda)
             'is_active' => true,
+            'email_verified_at' => now(),
         ]);
-
-        // 5. Data Dummy Produk (Agar Menu tidak kosong)
-        $catFood = Category::create([
-            'tenant_id' => $tenant->id,
-            'name' => 'Makanan Utama',
-            'slug' => 'makanan-utama',
-            'is_active' => true
-        ]);
-
-        Product::create([
-            'tenant_id' => $tenant->id,
-            'category_id' => $catFood->id,
-            'name' => 'Nasi Goreng Spesial',
-            'slug' => 'nasi-goreng-spesial',
-            'base_price' => 35000,
-            'is_available' => true,
-        ]);
+        
+        // Panggil seeder lain jika perlu
+        // $this->call([TableSeeder::class]); 
     }
 }
