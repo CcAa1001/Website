@@ -6,12 +6,14 @@ use Livewire\Component;
 use App\Models\Order;
 use App\Models\Table;
 use App\Models\Customer;
+use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 
 class Dashboard extends Component
 {
     public $salesData = [];
     public $categoryData = [];
+    public $lowStockProducts = [];
 
     public function mount()
     {
@@ -22,7 +24,7 @@ class Dashboard extends Component
     {
         $tenantId = auth()->user()->tenant_id;
 
-        // 1. Data Penjualan 7 Hari (Group By Postgres Safe)
+        // 1. Data Penjualan 7 Hari Terakhir (PostgreSQL Safe Grouping)
         $sales = Order::where('tenant_id', $tenantId)
             ->where('created_at', '>=', now()->subDays(6))
             ->select(DB::raw('DATE(created_at) as sales_date'), DB::raw('SUM(grand_total) as total'))
@@ -50,6 +52,12 @@ class Dashboard extends Component
             'labels' => $categories->pluck('name')->toArray(),
             'values' => $categories->pluck('total_qty')->toArray(),
         ];
+
+        // 3. Produk Stok Rendah (Fix: Menghapus kurung siku yang salah)
+        $this->lowStockProducts = Product::where('tenant_id', $tenantId)
+            ->orderBy('name', 'asc')
+            ->take(5)
+            ->get();
     }
 
     public function render()
@@ -60,7 +68,7 @@ class Dashboard extends Component
         return view('livewire.dashboard', [
             'todaysEarnings' => Order::where('tenant_id', $tenantId)->whereDate('created_at', now())->whereIn('status', ['completed', 'paid', 'served'])->sum('grand_total'),
             'totalOrders' => Order::where('tenant_id', $tenantId)->whereDate('created_at', now())->count(),
-            'activeOrders' => Order::where('tenant_id', $tenantId)->whereIn('status', ['pending', 'confirmed', 'preparing'])->count(),
+            'activeOrders' => Order::where('tenant_id', $tenantId)->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])->count(),
             'newCustomers' => Customer::where('tenant_id', $tenantId)->whereMonth('created_at', now()->month)->count(),
             'tables' => Table::where('outlet_id', $outletId)->orderBy('table_number')->pluck('table_number'),
             'recentOrders' => Order::where('tenant_id', $tenantId)->latest()->take(5)->get(),
