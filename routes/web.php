@@ -13,8 +13,26 @@ use App\Http\Livewire\Auth\ForgotPassword;
 use App\Http\Livewire\CategoryManager;
 use App\Http\Livewire\ModifierManager;
 use App\Http\Livewire\TableManager;
-use App\Http\Livewire\UserManager;
 
+// FIX: Point this to the correct existing file
+use App\Http\Livewire\ExampleLaravel\UserManagement; 
+use App\Http\Livewire\ExampleLaravel\UserProfile;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register web routes for your application. These
+| routes are loaded by the RouteServiceProvider within a group which
+| contains the "web" middleware group. Now create something great!
+|
+*/
+
+// Redirect root to login
+Route::get('/', function () {
+    return redirect('login');
+});
 
 // Menu Publik untuk QR
 Route::get('/order/{tableNumber}', PublicMenu::class)->name('public.menu');
@@ -30,17 +48,18 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/pos', PosSystem::class)->name('pos');
     
     // Product Management
-    Route::get('/products', ProductManager::class)->name('products'); // RENAMED
+    Route::get('/products', ProductManager::class)->name('products');
     Route::get('/categories', CategoryManager::class)->name('categories');
-    Route::get('/modifiers', ModifierManager::class)->name('modifiers'); // NEW
+    Route::get('/modifiers', ModifierManager::class)->name('modifiers');
     
     // Operations
-    Route::get('/tables', TableManager::class)->name('tables'); // NEW
+    Route::get('/tables', TableManager::class)->name('tables');
     
     // Reports & Customers
     Route::get('/customers', CustomerManager::class)->name('customers');
     Route::get('/reports', LaporanManager::class)->name('reports');
 
-    
+    // ADMIN SETTINGS (Fixed Routes)
+    Route::get('/user-management', UserManagement::class)->name('user-management');
+    Route::get('/user-profile', UserProfile::class)->name('user-profile');
 });
-

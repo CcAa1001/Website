@@ -8,6 +8,7 @@ use App\Models\TableArea;
 use App\Models\Outlet;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class TableManager extends Component
 {
@@ -17,7 +18,7 @@ class TableManager extends Component
     public $table_area_id;
     public $table_number;
     public $capacity = 4;
-    public $qr_code;
+    public $qr_code; // Now fully editable
     public $table_sort_order = 0;
     public $is_table_active = true;
     public $isEditingTable = false;
@@ -30,18 +31,36 @@ class TableManager extends Component
     public $isEditingArea = false;
 
     // UI State
-    public $currentView = 'tables'; // 'tables' or 'areas'
+    public $currentView = 'tables'; 
     public $selectedOutlet;
     public $selectedArea;
     public $showQRModal = false;
     public $qrCodeUrl;
+    public $qrCodeValue; // For display in modal
 
-    protected $rules = [
-        'outlet_id' => 'required|exists:outlets,id',
-        'table_number' => 'required|max:20',
-        'capacity' => 'required|integer|min:1|max:50',
-        'table_sort_order' => 'integer|min:0',
-    ];
+    protected function rules()
+    {
+        return [
+            'outlet_id' => 'required|exists:outlets,id',
+            'table_number' => [
+                'required', 
+                'max:20',
+                // Ensure table number is unique per outlet
+                Rule::unique('tables', 'table_number')
+                    ->where('outlet_id', $this->outlet_id)
+                    ->ignore($this->tableId)
+            ],
+            'qr_code' => [
+                'nullable', 
+                'string', 
+                'max:255',
+                // Ensure QR code is unique globally or per logic
+                Rule::unique('tables', 'qr_code')->ignore($this->tableId)
+            ],
+            'capacity' => 'required|integer|min:1|max:50',
+            'table_sort_order' => 'integer|min:0',
+        ];
+    }
 
     protected $areaRules = [
         'outlet_id' => 'required|exists:outlets,id',
@@ -53,7 +72,7 @@ class TableManager extends Component
     {
         $user = auth()->user();
         
-        // Set default outlet (user's outlet or first available)
+        // Set default outlet
         $this->selectedOutlet = $user->outlet_id ?? Outlet::where('tenant_id', $user->tenant_id)
             ->where('is_active', true)
             ->first()?->id;
@@ -65,13 +84,11 @@ class TableManager extends Component
     {
         $user = auth()->user();
 
-        // Get outlets for dropdown
         $outlets = Outlet::where('tenant_id', $user->tenant_id)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
 
-        // Get tables and areas based on selected outlet
         $tables = collect();
         $areas = collect();
 
@@ -79,7 +96,6 @@ class TableManager extends Component
             $query = Table::where('outlet_id', $this->selectedOutlet)
                 ->with('area');
 
-            // Apply area filter if selected
             if ($this->selectedArea) {
                 $query->where('table_area_id', $this->selectedArea);
             }
@@ -111,17 +127,9 @@ class TableManager extends Component
 
         $user = auth()->user();
 
-        // Check if table number already exists in this outlet
-        $exists = Table::where('outlet_id', $this->outlet_id)
-            ->where('table_number', $this->table_number)
-            ->when($this->tableId, function($q) {
-                $q->where('id', '!=', $this->tableId);
-            })
-            ->exists();
-
-        if ($exists) {
-            session()->flash('error', 'Nomor meja sudah digunakan di outlet ini!');
-            return;
+        // If QR code is empty, generate a unique random one
+        if (empty($this->qr_code)) {
+            $this->qr_code = $this->generateUniqueQR();
         }
 
         $data = [
@@ -129,26 +137,32 @@ class TableManager extends Component
             'table_area_id' => $this->table_area_id,
             'table_number' => $this->table_number,
             'capacity' => $this->capacity,
+            'qr_code' => $this->qr_code,
             'sort_order' => $this->table_sort_order,
             'is_active' => $this->is_table_active,
-            'status' => 'available',
         ];
 
-        // Generate QR code identifier if not editing or if outlet changed
-        if (!$this->tableId || !$this->qr_code) {
-            $data['qr_code'] = Str::random(32);
+        // Default status for new tables
+        if (!$this->tableId) {
+            $data['status'] = 'available';
         }
 
-        if ($this->tableId) {
-            $table = Table::findOrFail($this->tableId);
-            $table->update($data);
-            session()->flash('message', 'Meja berhasil diupdate!');
-        } else {
-            Table::create($data);
-            session()->flash('message', 'Meja berhasil ditambahkan!');
+        DB::beginTransaction();
+        try {
+            if ($this->tableId) {
+                $table = Table::findOrFail($this->tableId);
+                $table->update($data);
+                session()->flash('message', 'Meja berhasil diupdate!');
+            } else {
+                Table::create($data);
+                session()->flash('message', 'Meja berhasil ditambahkan!');
+            }
+            DB::commit();
+            $this->resetTableForm();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            session()->flash('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
-
-        $this->resetTableForm();
     }
 
     public function editTable($id)
@@ -160,7 +174,7 @@ class TableManager extends Component
         $this->table_area_id = $table->table_area_id;
         $this->table_number = $table->table_number;
         $this->capacity = $table->capacity;
-        $this->qr_code = $table->qr_code;
+        $this->qr_code = $table->qr_code; // Load existing QR for editing
         $this->table_sort_order = $table->sort_order;
         $this->is_table_active = $table->is_active;
         $this->isEditingTable = true;
@@ -170,7 +184,6 @@ class TableManager extends Component
     {
         $table = Table::findOrFail($id);
 
-        // Check if table has active orders
         if ($table->current_order_id) {
             session()->flash('error', 'Meja tidak dapat dihapus karena masih ada pesanan aktif!');
             return;
@@ -187,17 +200,39 @@ class TableManager extends Component
         session()->flash('message', 'Status meja berhasil diubah!');
     }
 
+    // Helper to generate a unique random QR string
+    private function generateUniqueQR()
+    {
+        do {
+            $code = Str::random(32);
+        } while (Table::where('qr_code', $code)->exists());
+        
+        return $code;
+    }
+
     public function regenerateQR($id)
     {
         $table = Table::findOrFail($id);
-        $table->update(['qr_code' => Str::random(32)]);
-        session()->flash('message', 'QR Code berhasil di-regenerate!');
+        $newCode = $this->generateUniqueQR();
+        
+        $table->update(['qr_code' => $newCode]);
+        
+        // If we are currently editing this table, update the form value
+        if ($this->tableId == $id) {
+            $this->qr_code = $newCode;
+        }
+        
+        session()->flash('message', 'QR Code baru berhasil dibuat!');
     }
 
     public function showQR($id)
     {
         $table = Table::findOrFail($id);
-        $this->qrCodeUrl = route('public.menu', $table->table_number);
+        $this->qrCodeUrl = route('public.menu', $table->table_number); // Using table number for public URL usually
+        // OR if you use the QR code string for the route:
+        // $this->qrCodeUrl = route('table.scan', $table->qr_code); 
+        
+        $this->qrCodeValue = $table->qr_code;
         $this->showQRModal = true;
     }
 
@@ -208,7 +243,6 @@ class TableManager extends Component
             return;
         }
 
-        // Example: Create 10 tables automatically
         $startNumber = 1;
         $endNumber = 10;
         $created = 0;
@@ -226,7 +260,7 @@ class TableManager extends Component
                         'table_area_id' => $this->table_area_id,
                         'table_number' => (string)$i,
                         'capacity' => 4,
-                        'qr_code' => Str::random(32),
+                        'qr_code' => $this->generateUniqueQR(),
                         'sort_order' => $i,
                         'is_active' => true,
                         'status' => 'available',
@@ -249,6 +283,7 @@ class TableManager extends Component
     }
 
     // ==================== AREA METHODS ====================
+    // (Kept largely the same, just ensured validation matches)
 
     public function saveArea()
     {
@@ -262,8 +297,7 @@ class TableManager extends Component
         ];
 
         if ($this->areaId) {
-            $area = TableArea::findOrFail($this->areaId);
-            $area->update($data);
+            TableArea::findOrFail($this->areaId)->update($data);
             session()->flash('message', 'Area berhasil diupdate!');
         } else {
             TableArea::create($data);
@@ -276,7 +310,6 @@ class TableManager extends Component
     public function editArea($id)
     {
         $area = TableArea::findOrFail($id);
-
         $this->areaId = $area->id;
         $this->areaName = $area->name;
         $this->area_sort_order = $area->sort_order;
@@ -287,13 +320,10 @@ class TableManager extends Component
     public function deleteArea($id)
     {
         $area = TableArea::findOrFail($id);
-
-        // Check if area has tables
         if ($area->tables()->count() > 0) {
             session()->flash('error', 'Area tidak dapat dihapus karena masih memiliki meja!');
             return;
         }
-
         $area->delete();
         session()->flash('message', 'Area berhasil dihapus!');
     }

@@ -8,41 +8,68 @@
     <hr class="horizontal light mt-0 mb-2">
     <div class="collapse navbar-collapse w-auto" id="sidenav-collapse-main">
         <ul class="navbar-nav">
-            <li class="nav-item">
-                <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'dashboard' ? ' active' : '' }}" href="{{ route('dashboard') }}">
-                    <i class="material-icons opacity-10">dashboard</i>
-                    <span class="nav-link-text ms-1">Dashboard</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'pos' ? ' active' : '' }}" href="{{ route('pos') }}">
-                    <i class="material-icons opacity-10">shopping_cart</i>
-                    <span class="nav-link-text ms-1">POS System</span>
-                </a>
-            </li>
-            <li class="nav-item mt-3"><h6 class="ps-4 ms-2 text-uppercase text-xs text-white font-weight-bolder opacity-8">Data Master</h6></li>
-            <li class="nav-item">
-                <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'products' ? ' active' : '' }}" href="{{ route('products') }}">
-                    <i class="material-icons opacity-10">inventory_2</i>
-                    <span class="nav-link-text ms-1">Products</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'categories' ? ' active' : '' }}" href="{{ route('categories') }}">
-                    <i class="material-icons opacity-10">category</i>
-                    <span class="nav-link-text ms-1">Categories</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'customers' ? ' active' : '' }}" href="{{ route('customers') }}">
-                    <i class="material-icons opacity-10">groups</i>
-                    <span class="nav-link-text ms-1">Customers</span>
-                </a>
-            </li>
-            <li class="nav-item mt-3"><h6 class="ps-4 ms-2 text-uppercase text-xs text-white font-weight-bolder opacity-8">Settings</h6></li>
-            <li class="nav-item">
-              
-            </li>
+            
+            {{-- OPTION 1: Only show menu if user is logged in --}}
+            @auth
+                {{-- COMMON MENU (Accessible by all logged in users) --}}
+                @if(auth()->user()->hasPermission('dashboard.access'))
+                <li class="nav-item">
+                    <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'dashboard' ? ' active' : '' }}" href="{{ route('dashboard') }}">
+                        <i class="material-icons opacity-10">dashboard</i>
+                        <span class="nav-link-text ms-1">Dashboard</span>
+                    </a>
+                </li>
+                @endif
+
+                @if(auth()->user()->hasPermission('pos.access'))
+                <li class="nav-item">
+                    <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'pos' ? ' active' : '' }}" href="{{ route('pos') }}">
+                        <i class="material-icons opacity-10">shopping_cart</i>
+                        <span class="nav-link-text ms-1">POS System</span>
+                    </a>
+                </li>
+                @endif
+
+                {{-- MANAGER & ADMIN MENU --}}
+                @if(auth()->user()->hasPermission('products.manage'))
+                    <li class="nav-item mt-3"><h6 class="ps-4 ms-2 text-uppercase text-xs text-white font-weight-bolder opacity-8">Data Master</h6></li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'products' ? ' active' : '' }}" href="{{ route('products') }}">
+                            <i class="material-icons opacity-10">inventory_2</i>
+                            <span class="nav-link-text ms-1">Products</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'categories' ? ' active' : '' }}" href="{{ route('categories') }}">
+                            <i class="material-icons opacity-10">category</i>
+                            <span class="nav-link-text ms-1">Categories</span>
+                        </a>
+                    </li>
+                @endif
+
+                @if(auth()->user()->hasPermission('customers.manage'))
+                    <li class="nav-item">
+                        <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'customers' ? ' active' : '' }}" href="{{ route('customers') }}">
+                            <i class="material-icons opacity-10">groups</i>
+                            <span class="nav-link-text ms-1">Customers</span>
+                        </a>
+                    </li>
+                @endif
+
+                {{-- ADMIN SETTINGS --}}
+                @if(auth()->user()->hasPermission('users.manage'))
+                    <li class="nav-item mt-3"><h6 class="ps-4 ms-2 text-uppercase text-xs text-white font-weight-bolder opacity-8">Admin Settings</h6></li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link text-white theme-link {{ Route::currentRouteName() == 'user-management' ? ' active' : '' }}" href="{{ route('user-management') }}">
+                            <i class="material-icons opacity-10">manage_accounts</i>
+                            <span class="nav-link-text ms-1">User Management</span>
+                        </a>
+                    </li>
+                @endif
+            @endauth
+
         </ul>
     </div>
 </aside>

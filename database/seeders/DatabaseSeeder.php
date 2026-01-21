@@ -15,7 +15,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run()
     {
-        // 1. Buat Tenant (Restoran Utama)
+        // 1. Create Tenant
         $tenant = Tenant::create([
             'code' => 'RESTO-001',
             'name' => 'Restoran Nusantara',
@@ -24,7 +24,7 @@ class DatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        // 2. Buat Outlet (Cabang Pusat)
+        // 2. Create Outlet
         $outlet = Outlet::create([
             'tenant_id' => $tenant->id,
             'code' => 'JKT-01',
@@ -33,34 +33,71 @@ class DatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        // 3. Buat Roles
+        // 3. Define Roles & Permissions
+        // 'slug' is used for code logic, 'permissions' defines what they can access
+        
+        // A. MASTER ADMIN (Super Admin) - Has wildcard '*' access
         $roleSuperAdmin = Role::create([
             'tenant_id' => $tenant->id,
             'name' => 'Super Admin',
             'slug' => 'super_admin',
-            'permissions' => ['*'], // Akses semua
+            'permissions' => ['*'], // '*' means Access Everything
             'is_system' => true,
         ]);
         
+        // B. MANAGER (Can manage operation, but not system settings)
+        $roleManager = Role::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Manager',
+            'slug' => 'manager',
+            'permissions' => [
+                'dashboard.access',
+                'pos.access',
+                'products.manage', // Create/Edit/Delete products
+                'categories.manage',
+                'customers.manage',
+                'reports.view'
+            ], 
+            'is_system' => false,
+        ]);
+
+        // C. CASHIER (POS Only)
         $roleCashier = Role::create([
             'tenant_id' => $tenant->id,
             'name' => 'Cashier',
             'slug' => 'cashier',
-            'permissions' => ['pos.access', 'orders.create'], 
+            'permissions' => [
+                'pos.access',
+                'orders.create',
+                'orders.view'
+            ], 
+            'is_system' => false,
         ]);
 
-        // 4. Buat User Admin (Untuk Login Pertama)
+        // 4. Create MASTER ADMIN User
         User::create([
             'tenant_id' => $tenant->id,
             'outlet_id' => $outlet->id,
             'role_id' => $roleSuperAdmin->id,
-            'name' => 'Admin Utama',
-            'email' => 'admin@material.com', // Email default template material dashboard
-            'password' => 'secret', // Password akan di-hash otomatis oleh Model User (setPasswordAttribute)
+            'name' => 'Master Admin',
+            'email' => 'admin@admin.com', // Your requested email
+            'password' => 'secret', // Will be hashed by model caster or mutator
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        // 5. Create a Dummy Manager (For testing)
+        User::create([
+            'tenant_id' => $tenant->id,
+            'outlet_id' => $outlet->id,
+            'role_id' => $roleManager->id,
+            'name' => 'John Manager',
+            'email' => 'manager@test.com',
+            'password' => 'secret',
             'is_active' => true,
         ]);
 
-        // 5. Data Dummy Produk (Agar Menu tidak kosong)
+        // 6. Dummy Data (Products)
         $catFood = Category::create([
             'tenant_id' => $tenant->id,
             'name' => 'Makanan Utama',

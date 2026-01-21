@@ -83,8 +83,36 @@ class User extends Authenticatable
         return $this->belongsTo(Outlet::class);
     }
 
-    public function role()
+public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * CHECK PERMISSION HELPER
+     * This allows you to set it freely.
+     */
+    public function hasPermission($permission): bool
+    {
+        // 1. If user has no role, deny
+        if (!$this->role) {
+            return false;
+        }
+
+        // 2. If user is 'super_admin' slug, ALLOW EVERYTHING
+        if ($this->role->slug === 'super_admin') {
+            return true;
+        }
+
+        // 3. Get permissions array from role
+        $permissions = $this->role->permissions ?? [];
+
+        // 4. If permissions contain wildcard '*', ALLOW EVERYTHING
+        if (in_array('*', $permissions)) {
+            return true;
+        }
+
+        // 5. Check for specific permission
+        return in_array($permission, $permissions);
     }
 }
