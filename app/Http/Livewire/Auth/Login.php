@@ -18,15 +18,14 @@ class Login extends Component
 
     public function mount() 
     {
-        // FIX: Use auth()->check() instead of auth()->user()
-        //if (auth()->check()) {
-           // return redirect()->intended('/dashboard');
-        //}
+        if (auth()->check()) {
+            return redirect()->route('dashboard');
+        }
     }
 
-    public function login()  // CHANGED FROM 'store' to 'login'
+    public function login()
     {
-        $attributes = $this->validate();
+        $this->validate();
 
         if (!auth()->attempt(['email' => $this->email, 'password' => $this->password], $this->remember_me)) {
             $this->addError('email', trans('auth.failed'));
@@ -42,22 +41,13 @@ class Login extends Component
             return;
         }
 
-        // Validasi Tenant Aktif
-        if ($user->tenant_id) {
-            $tenant = \App\Models\Tenant::find($user->tenant_id);
-            if ($tenant && !$tenant->is_active) {
-                auth()->logout();
-                $this->addError('email', 'Langganan restoran ini sudah tidak aktif.');
-                return;
-            }
-        }
-
         session()->regenerate();
         return redirect()->intended('/dashboard');
     }
 
     public function render()
     {
-        return view('livewire.auth.login');
+        // PENTING: Gunakan layout guest-auth yang baru dibuat
+        return view('livewire.auth.login')->layout('layouts.guest-auth');
     }
 }

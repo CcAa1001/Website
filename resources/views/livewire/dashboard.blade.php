@@ -52,14 +52,15 @@
                 </div>
                 <div class="card-body px-4">
                     <div class="row">
-                        @foreach($tables as $t)
+                        @foreach($tables as $table)
                         <div class="col-md-3 col-6 mb-4 text-center">
                             <div class="p-3 border-radius-lg bg-gray-100 shadow-sm">
                                 <div class="bg-white p-2 d-inline-block mb-2 border">
-                                    <div class="qr-code-canvas" data-url="{{ route('public.menu', $t) }}"></div>
+                                    {{-- Generate QR Code Langsung di Server (Lebih Stabil) --}}
+                                    {!! SimpleSoftwareIO\QrCode\Facades\QrCode::size(100)->generate(route('public.menu', $table->id)) !!}
                                 </div>
-                                <h6 class="mb-0">Meja {{ $t }}</h6>
-                                <a href="{{ route('public.menu', $t) }}" target="_blank" class="btn btn-sm theme-btn bg-gradient-primary w-100 mt-2">Buka</a>
+                                <h6 class="mb-0">Meja {{ $table->table_number }}</h6>
+                                <a href="{{ route('public.menu', $table->id) }}" target="_blank" class="btn btn-sm theme-btn bg-gradient-primary w-100 mt-2">Buka Menu</a>
                             </div>
                         </div>
                         @endforeach

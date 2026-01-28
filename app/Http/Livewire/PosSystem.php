@@ -686,20 +686,45 @@ class POSSystem extends Component
 
     public function render()
     {
-        $tables = [];
+        $user = auth()->user();
         
-        if ($this->orderType === 'dine_in') {
-            $user = auth()->user();
-            $tables = Table::where('outlet_id', $user->outlet_id)
-                ->where('is_active', true)
-                ->orderBy('table_number')
-                ->get();
+        // 1. Ambil Kategori
+        $categories = \App\Models\Category::where('tenant_id', $user->tenant_id)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+
+        // 2. Query Produk (Pastikan variabel ini SELALU terdefinisi)
+        $query = \App\Models\Product::where('tenant_id', $user->tenant_id)
+            ->where('is_available', true);
+
+        // Filter berdasarkan kategori jika ada
+        if ($this->selectedCategory) {
+            $query->where('category_id', $this->selectedCategory);
         }
 
+        // Filter pencarian jika ada
+        if ($this->search) {
+            $query->where('name', 'like', '%' . $this->search . '%');
+        }
+
+        // Eksekusi query
+        $products = $query->orderBy('sort_order')->get();
+
+        // 3. Ambil Meja (Untuk perbaikan "Meja tidak bisa diakses")
+        $tables = \App\Models\Table::where('outlet_id', $user->outlet_id)
+            ->where('is_active', true)
+            ->get();
+
+        // 4. Return View
         return view('livewire.pos-system', [
-            'products' => $products,
             'categories' => $categories,
-        ])
-        ->layout('layouts.app', ['activePage' => 'pos']); // <--- TAMBAHKAN INI
+            'products' => $products, // Variabel ini sekarang aman
+            'tables' => $tables,
+            'cart' => $this->cart,
+            'subtotal' => $this->subtotal,
+            'tax' => $this->tax,
+            'total' => $this->total
+        ]);
     }
 }

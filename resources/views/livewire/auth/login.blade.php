@@ -1,88 +1,53 @@
-<div>
-    {{-- Single root wrapper for Livewire --}}
-    <div class="container my-auto mt-5">
-        <div class="row signin-margin">
-            <div class="col-lg-4 col-md-8 col-12 mx-auto">
-                <div class="card z-index-0 fadeIn3 fadeInBottom">
-                    <div class="card-header p-0 position-relative mt-n4 mx-3 z-index-2">
-                        <div class="bg-gradient-primary shadow-primary border-radius-lg py-3 pe-1">
-                            <h4 class="text-white font-weight-bolder text-center mt-2 mb-0">Sign in</h4>
-                            <div class="row mt-3">
-                                <h6 class='text-white text-center'>
-                                    <span class="font-weight-normal">Email:</span>budi.santoso@resto.com {{--admin@material.com --}}
-                                    <br>
-                                    <span class="font-weight-normal">Password:</span>password {{--secret--}}
-                                </h6>
-                                <div class="col-2 text-center ms-auto">
-                                    <a class="btn btn-link px-3" href="javascript:;">
-                                        <i class="fa fa-facebook text-white text-lg"></i>
-                                    </a>
-                                </div>
-                                <div class="col-2 text-center px-1">
-                                    <a class="btn btn-link px-3" href="javascript:;">
-                                        <i class="fa fa-github text-white text-lg"></i>
-                                    </a>
-                                </div>
-                                <div class="col-2 text-center me-auto">
-                                    <a class="btn btn-link px-3" href="javascript:;">
-                                        <i class="fa fa-google text-white text-lg"></i>
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        {{-- FIXED: Changed wire:submit='login' to wire:submit.prevent='login' --}}
-                        <form wire:submit.prevent='login'>
-                            @if (Session::has('status'))
-                            <div class="alert alert-success alert-dismissible text-white" role="alert">
-                                <span class="text-sm">{{ Session::get('status') }}</span>
-                                <button type="button" class="btn-close text-lg py-3 opacity-10"
-                                    data-bs-dismiss="alert" aria-label="Close">
-                                    <span aria-hidden="true">&times;</span>
-                                </button>
-                            </div>
-                            @endif
-                            
-                            <div class="input-group input-group-outline mt-3 @if(strlen($email ?? '') > 0) is-filled @endif">
-                                <label class="form-label">Email</label>
-                                <input wire:model.live='email' type="email" class="form-control">
-                            </div>
-                            @error('email')
-                            <p class='text-danger inputerror'>{{ $message }}</p>
-                            @enderror
 
-                            <div class="input-group input-group-outline mt-3 @if(strlen($password ?? '') > 0) is-filled @endif">
-                                <label class="form-label">Password</label>
-                                <input wire:model.live="password" type="password" class="form-control">
-                            </div>
-                            @error('password')
-                            <p class='text-danger inputerror'>{{ $message }}</p>
-                            @enderror
-                            
-                            <div class="form-check form-switch d-flex align-items-center my-3">
-                                <input class="form-check-input" type="checkbox" id="rememberMe" wire:model="remember_me">
-                                <label class="form-check-label mb-0 ms-2" for="rememberMe">Remember me</label>
-                            </div>
-                            
-                            <div class="text-center">
-                                <button type="submit" class="btn bg-gradient-primary w-100 my-4 mb-2">
-                                    Sign in
-                                </button>
-                            </div>
-                            
-                            <p class="mt-4 text-sm text-center">
-                                Don't have an account?
-                                <a href="{{ route('register') }}" class="text-primary text-gradient font-weight-bold">Sign up</a>
-                            </p>
-                            <p class="text-sm text-center">
-                                Forgot your password? Reset your password
-                                <a href="{{ route('password.forgot') }}" class="text-primary text-gradient font-weight-bold">here</a>
-                            </p>
-                        </form>
-                    </div>
-                </div>
-            </div>
+<div class="container d-flex justify-content-center">
+    {{-- Root element harus membungkus semua konten --}}
+    <div class="glass-card">
+        <div class="text-center mb-4">
+            <h3 class="font-weight-bolder text-white text-shadow">Welcome Back!</h3>
+            <p class="mb-0 text-white opacity-8">Silakan login untuk melanjutkan</p>
+                        <h6 class='text-white text-center'>
+                <span class="font-weight-normal">Email:</span>budi.santoso@resto.com {{--admin@material.com --}}
+                <br>
+                <span class="font-weight-normal">Password:</span>password {{--secret--}}
+            </h6>
         </div>
+
+        <form wire:submit.prevent='login'>
+            
+            @if (Session::has('status'))
+            <div class="alert alert-success text-white mb-3 bg-gradient-success" role="alert">
+                {{ Session::get('status') }}
+            </div>
+            @endif
+
+            <div class="mb-3">
+                <label class="form-label text-white">Email</label>
+                <input wire:model="email" type="email" class="form-control glass-input ps-3" placeholder="name@example.com">
+                @error('email') <p class='text-danger text-xs mt-1 font-weight-bold'>{{ $message }}</p> @enderror
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-white">Password</label>
+                <input wire:model="password" type="password" class="form-control glass-input ps-3" placeholder="••••••••">
+                @error('password') <p class='text-danger text-xs mt-1 font-weight-bold'>{{ $message }}</p> @enderror
+            </div>
+
+            <div class="form-check form-switch d-flex align-items-center mb-3">
+                <input class="form-check-input" type="checkbox" id="rememberMe" wire:model="remember_me">
+                <label class="form-check-label mb-0 ms-3 text-white" for="rememberMe">Ingat Saya</label>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn bg-white text-primary w-100 my-3 mb-2 font-weight-bold">
+                    <span wire:loading.remove>MASUK</span>
+                    <span wire:loading>LOADING...</span>
+                </button>
+            </div>
+
+            <p class="mt-4 text-sm text-center text-white">
+                Lupa password?
+                <a href="{{ route('password.forgot') }}" class="text-info text-gradient font-weight-bold">Reset disini</a>
+            </p>
+        </form>
     </div>
 </div>

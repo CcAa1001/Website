@@ -66,8 +66,7 @@ class Dashboard extends Component
         $tenantId = auth()->user()->tenant_id;
         $outletId = auth()->user()->outlet_id;
 
-        // [FIX] Menampilkan SEMUA Order Aktif (POS + QR)
-        // Saya menghapus where('order_source', 'qr_scan') agar order dari POS juga masuk
+        // [FIX] Ambil semua order aktif (Pending, Confirmed, Preparing, Ready)
         $activeOrders = Order::where('tenant_id', $tenantId)
             ->where('outlet_id', $outletId)
             ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])
@@ -75,7 +74,7 @@ class Dashboard extends Component
             ->orderBy('created_at', 'asc')
             ->get();
 
-        // Grouping status for Kanban
+        // Grouping status for Kanban Board
         $ordersByStatus = [
             'pending' => $activeOrders->where('status', 'pending')->values(),
             'confirmed' => $activeOrders->where('status', 'confirmed')->values(),
@@ -83,37 +82,47 @@ class Dashboard extends Component
             'ready' => $activeOrders->where('status', 'ready')->values(),
         ];
 
-        // Active Tables
+        // Active Tables Sessions
         $activeSessions = TableSession::where('tenant_id', $tenantId)
             ->where('outlet_id', $outletId)
             ->active()
             ->with(['table', 'orders'])
             ->get();
 
-        // Stats
+        // Table Statistics
         $tableStats = [
             'total' => Table::where('outlet_id', $outletId)->count(),
             'occupied' => Table::where('outlet_id', $outletId)->where('status', 'occupied')->count(),
             'available' => Table::where('outlet_id', $outletId)->where('status', 'available')->count(),
         ];
 
+        // Today's Stats
         $todaysOrders = Order::where('tenant_id', $tenantId)
             ->whereDate('created_at', now())
             ->get();
 
+        // [FIX] Mengambil Objek Table lengkap, bukan hanya nomornya saja
+        // Ini memperbaiki error "Attempt to read property id on string"
+        $tables = Table::where('outlet_id', $outletId)
+            ->orderBy('table_number')
+            ->get(); 
+
+        // [FIX] Menggunakan view 'dashboard-enhanced' sesuai permintaan
         return view('livewire.dashboard-enhanced', [
             'todaysEarnings' => $todaysOrders->whereIn('status', ['completed', 'served'])->sum('grand_total'),
             'totalOrders' => $todaysOrders->count(),
             'activeOrdersCount' => $activeOrders->count(),
             'newCustomers' => Customer::where('tenant_id', $tenantId)->whereMonth('created_at', now()->month)->count(),
-            'tables' => Table::where('outlet_id', $outletId)->orderBy('table_number')->pluck('table_number'),
+            'tables' => $tables, 
             'activeOrders' => $activeOrders,
             'ordersByStatus' => $ordersByStatus,
             'activeSessions' => $activeSessions,
             'tableStats' => $tableStats,
         ])
-        // [FIX] Mengirim variabel 'activePage' ke Layout agar sidebar menyala
-        ->layout('layouts.app', ['activePage' => 'dashboard']);
+        ->layout('layouts.app', [
+            'titlePage' => 'Dashboard', // [FIX] Mengirim variabel titlePage untuk mencegah error undefined variable
+            'activePage' => 'dashboard'
+        ]);
     }
 
     public function quickUpdateStatus($orderId, $newStatus)
@@ -129,6 +138,9 @@ class Dashboard extends Component
         }
         
         $order->update($updates);
-        session()->flash('message', 'Status updated!');
+        
+        // Kirim event untuk refresh komponen lain jika perlu
+        $this->dispatch('orderUpdated'); 
+        session()->flash('message', 'Status updated to ' . ucfirst($newStatus));
     }
 }

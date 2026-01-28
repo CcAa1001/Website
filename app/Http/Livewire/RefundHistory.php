@@ -133,6 +133,10 @@ class RefundHistory extends Component
         $this->selectedRefundId = $refundId;
     }
 
+    public function refunds() {
+        return $this->hasMany(Refund::class);
+    }
+
     public function setDateRange($range)
     {
         $this->filterDateRange = $range;
