@@ -9,9 +9,9 @@
                             <h4 class="text-white font-weight-bolder text-center mt-2 mb-0">Sign in</h4>
                             <div class="row mt-3">
                                 <h6 class='text-white text-center'>
-                                    <span class="font-weight-normal">Email:</span> admin@material.com
+                                    <span class="font-weight-normal">Email:</span>budi.santoso@resto.com {{--admin@material.com --}}
                                     <br>
-                                    <span class="font-weight-normal">Password:</span> secret
+                                    <span class="font-weight-normal">Password:</span>password {{--secret--}}
                                 </h6>
                                 <div class="col-2 text-center ms-auto">
                                     <a class="btn btn-link px-3" href="javascript:;">

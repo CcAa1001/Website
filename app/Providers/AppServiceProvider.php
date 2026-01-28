@@ -3,10 +3,13 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-
-use Illuminate\Support\Facades\URL; // Add this line
-
+use App\Observers\TableSessionObserver;
+use Illuminate\Support\Facades\URL; 
+use App\Models\Order;
+use App\Observers\OrderObserver;
+use App\Models\TableSession;
 class AppServiceProvider extends ServiceProvider
+
 {
     /**
      * Register any application services.
@@ -28,5 +31,7 @@ class AppServiceProvider extends ServiceProvider
         if (env('APP_ENV') !== 'local' || request()->header('X-Forwarded-Proto') === 'https') {
             URL::forceScheme('https');
         }
+        Order::observe(OrderObserver::class);
+        TableSession::observe(TableSessionObserver::class);
     }
 }

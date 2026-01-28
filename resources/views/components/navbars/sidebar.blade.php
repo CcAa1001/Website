@@ -1,7 +1,7 @@
 <aside class="sidenav navbar navbar-vertical navbar-expand-xs border-0 border-radius-xl my-3 fixed-start ms-3 bg-gradient-dark" id="sidenav-main">
     <div class="sidenav-header">
         <a class="navbar-brand m-0" href="{{ route('dashboard') }}">
-            <img src="{{ asset('assets') }}/img/logo-ct.png" class="navbar-brand-img h-100" alt="main_logo">
+            <img src="{{ asset('assets') }}/img/nibble-logo.png" class="navbar-brand-img h-100" alt="main_logo">
             <span class="ms-1 font-weight-bold text-white">BAKERY ADMIN</span>
         </a>
     </div>
@@ -41,7 +41,13 @@
             </li>
             <li class="nav-item mt-3"><h6 class="ps-4 ms-2 text-uppercase text-xs text-white font-weight-bolder opacity-8">Settings</h6></li>
             <li class="nav-item">
-              
+            <li class="nav-item">
+    <a class="nav-link {{ Request::is('transactions*') ? 'active bg-gradient-primary' : '' }}" 
+       href="{{ route('transactions') }}">
+        <i class="material-icons">receipt_long</i>
+        <span class="nav-link-text ms-1">Transactions</span>
+    </a>
+</li>
             </li>
         </ul>
     </div>

@@ -3,13 +3,35 @@
     <main class="main-content position-relative max-height-vh-100 h-100 border-radius-lg ">
         <x-navbars.navs.auth></x-navbars.navs.auth>
         {{ $slot }}
-        <x-footers.auth></x-footers.auth>
+        
     </main>
     <x-plugins></x-plugins>
 
     @push('js')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="{{ asset('assets') }}/js/plugins/chartjs.min.js"></script>
+    
+    {{-- 🔥 REAL-TIME: Pusher + Laravel Echo from CDN --}}
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    
+    <script>
+        // Initialize Laravel Echo with Pusher
+        window.Echo = new Echo({
+            broadcaster: 'pusher',
+            key: '{{ env("PUSHER_APP_KEY") }}',
+            cluster: '{{ env("PUSHER_APP_CLUSTER") }}',
+            forceTLS: true,
+            authEndpoint: '/broadcasting/auth',
+            auth: {
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            }
+        });
+
+        console.log('✅ Laravel Echo initialized');
+    </script>
     
     <script>
         function bootProject() {
@@ -45,4 +67,5 @@
         });
     </script>
     @endpush
+    
 </x-layouts.base>

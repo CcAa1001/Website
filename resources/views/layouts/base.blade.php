@@ -7,7 +7,15 @@
     <title>Startup Admin Panel</title>
     <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700,900|Roboto+Slab:400,700" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link id="pagestyle" href="{{ asset('assets') }}/css/material-dashboard.css?v=3.0.0" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ asset('css/dashboard-modern.css') }}">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    {{-- Safe meta tags for Pusher --}}
+@auth
+    <meta name="outlet-id" content="{{ auth()->user()->outlet_id }}">
+    <meta name="tenant-id" content="{{ auth()->user()->tenant_id }}">
+@endauth
     @livewireStyles
     <style>
         .product-card:hover { transform: translateY(-5px); transition: 0.3s; }
@@ -15,6 +23,7 @@
         ::-webkit-scrollbar { display: none; } /* Hide scrollbars for cleaner startup look */
     </style>
 </head>
+
 <body class="g-sidenav-show bg-gray-200">
     {{ $slot }}
 
@@ -51,5 +60,6 @@
         document.addEventListener('livewire:navigated', syncStartupTheme);
         window.addEventListener('livewire:load', syncStartupTheme);
     </script>
+    <script src="{{ asset('js/dashboard-modern.js') }}"></script>
 </body>
 </html>

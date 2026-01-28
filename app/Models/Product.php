@@ -13,24 +13,10 @@ class Product extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;
 
-    /**
-     * The table associated with the model.
-     */
     protected $table = 'products';
-
-    /**
-     * The primary key type.
-     */
     protected $keyType = 'string';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     */
     public $incrementing = false;
 
-    /**
-     * The attributes that are mass assignable.
-     */
     protected $fillable = [
         'tenant_id',
         'category_id',
@@ -38,7 +24,7 @@ class Product extends Model
         'name',
         'slug',
         'description',
-        'image_url',
+        'image_url', // DEPRECATED - kept for backward compatibility
         'base_price',
         'cost_price',
         'tax_inclusive',
@@ -53,9 +39,6 @@ class Product extends Model
         'allergens',
     ];
 
-    /**
-     * The attributes that should be cast.
-     */
     protected $casts = [
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
@@ -70,18 +53,22 @@ class Product extends Model
         'deleted_at' => 'datetime',
     ];
 
-    /**
-     * Boot the model.
-     */
     protected static function boot()
     {
         parent::boot();
 
-        // Auto-generate slug from name if not provided
         static::creating(function ($product) {
             if (empty($product->slug)) {
                 $product->slug = \Str::slug($product->name);
             }
+        });
+
+        // Delete all images when product is deleted
+        static::deleting(function ($product) {
+            $product->images()->each(function ($image) {
+                $image->deleteFiles();
+                $image->delete();
+            });
         });
     }
 
@@ -89,41 +76,26 @@ class Product extends Model
     // RELATIONSHIPS
     // ==========================================
 
-    /**
-     * Get the tenant that owns the product.
-     */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }
 
-    /**
-     * Get the category that the product belongs to.
-     */
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
     }
 
-    /**
-     * Get the variants for the product.
-     */
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
     }
 
-    /**
-     * Get the outlet-specific product settings.
-     */
     public function outletProducts(): HasMany
     {
         return $this->hasMany(OutletProduct::class);
     }
 
-    /**
-     * Get the modifier groups for the product.
-     */
     public function modifierGroups()
     {
         return $this->belongsToMany(ModifierGroup::class, 'product_modifier_groups')
@@ -131,83 +103,148 @@ class Product extends Model
             ->orderByPivot('sort_order');
     }
 
+    /**
+     * NEW: Get all product images
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->ordered();
+    }
+
+    /**
+     * NEW: Get primary image
+     */
+    public function primaryImage()
+    {
+        return $this->hasOne(ProductImage::class)->where('is_primary', true);
+    }
+
     // ==========================================
     // ACCESSORS
     // ==========================================
 
-    /**
-     * Get the formatted price.
-     */
     public function getFormattedPriceAttribute(): string
     {
         return 'Rp ' . number_format($this->base_price, 0, ',', '.');
     }
 
     /**
-     * Get the product image URL or default placeholder.
+     * UPDATED: Get primary image or fallback
      */
     public function getImageAttribute(): string
     {
+        // Try to get primary image
+        $primaryImage = $this->primaryImage;
+        if ($primaryImage) {
+            return $primaryImage->medium_url;
+        }
+
+        // Try to get first image
+        $firstImage = $this->images()->first();
+        if ($firstImage) {
+            return $firstImage->medium_url;
+        }
+
+        // DEPRECATED: Fallback to old image_url field
         if ($this->image_url) {
-            // Check if it's a full URL or relative path
             if (filter_var($this->image_url, FILTER_VALIDATE_URL)) {
                 return $this->image_url;
             }
             return asset('storage/' . $this->image_url);
         }
         
-        return asset('assets/images/product-placeholder.png');
+        // Use backend-controlled placeholder
+        return ImageSetting::placeholderUrl($this->tenant_id);
     }
 
     /**
-     * Check if product has a discount/sale price.
+     * NEW: Get image by size
      */
+    public function getImageBySize(string $size = 'medium'): string
+    {
+        $primaryImage = $this->primaryImage;
+        
+        if ($primaryImage) {
+            return $primaryImage->getUrl($size);
+        }
+
+        $firstImage = $this->images()->first();
+        if ($firstImage) {
+            return $firstImage->getUrl($size);
+        }
+
+        return ImageSetting::placeholderUrl($this->tenant_id);
+    }
+
+    /**
+     * NEW: Get thumbnail
+     */
+    public function getThumbnailAttribute(): string
+    {
+        return $this->getImageBySize('thumbnail');
+    }
+
+    /**
+     * NEW: Get medium image
+     */
+    public function getMediumImageAttribute(): string
+    {
+        return $this->getImageBySize('medium');
+    }
+
+    /**
+     * NEW: Get large image
+     */
+    public function getLargeImageAttribute(): string
+    {
+        return $this->getImageBySize('large');
+    }
+
+    /**
+     * NEW: Check if product has images
+     */
+    public function getHasImagesAttribute(): bool
+    {
+        return $this->images()->exists();
+    }
+
+    /**
+     * NEW: Get image count
+     */
+    public function getImageCountAttribute(): int
+    {
+        return $this->images()->count();
+    }
+
     public function getHasDiscountAttribute(): bool
     {
-        // You can extend this with sale_price field if needed
-        return false;
+        return false; // Extend with sale_price if needed
     }
 
-    /**
-     * Get discount percentage.
-     */
     public function getDiscountPercentageAttribute(): int
     {
-        // Extend this when you add sale_price
-        return 0;
+        return 0; // Extend with sale_price if needed
     }
 
     // ==========================================
     // SCOPES
     // ==========================================
 
-    /**
-     * Scope to filter only available products.
-     */
     public function scopeAvailable($query)
     {
         return $query->where('is_available', true);
     }
 
-    /**
-     * Scope to filter featured products.
-     */
     public function scopeFeatured($query)
     {
         return $query->where('is_featured', true);
     }
 
-    /**
-     * Scope to filter by category.
-     */
     public function scopeInCategory($query, $categoryId)
     {
         return $query->where('category_id', $categoryId);
     }
 
-    /**
-     * Scope to filter by category slug.
-     */
     public function scopeInCategorySlug($query, $slug)
     {
         return $query->whereHas('category', function ($q) use ($slug) {
@@ -215,9 +252,6 @@ class Product extends Model
         });
     }
 
-    /**
-     * Scope to filter by price range.
-     */
     public function scopePriceBetween($query, $min, $max)
     {
         if ($min !== null) {
@@ -229,9 +263,6 @@ class Product extends Model
         return $query;
     }
 
-    /**
-     * Scope to search products by name or description.
-     */
     public function scopeSearch($query, $term)
     {
         return $query->where(function ($q) use ($term) {
@@ -241,9 +272,6 @@ class Product extends Model
         });
     }
 
-    /**
-     * Scope to filter by tags.
-     */
     public function scopeWithTags($query, array $tags)
     {
         return $query->where(function ($q) use ($tags) {
@@ -253,9 +281,6 @@ class Product extends Model
         });
     }
 
-    /**
-     * Scope to sort products.
-     */
     public function scopeSortBy($query, $sort)
     {
         return match ($sort) {
@@ -270,11 +295,26 @@ class Product extends Model
         };
     }
 
-    /**
-     * Scope for a specific tenant.
-     */
     public function scopeForTenant($query, $tenantId)
     {
         return $query->where('tenant_id', $tenantId);
+    }
+
+    /**
+     * NEW: Eager load images
+     */
+    public function scopeWithImages($query)
+    {
+        return $query->with(['images' => function ($q) {
+            $q->ordered();
+        }]);
+    }
+
+    /**
+     * NEW: Eager load primary image only
+     */
+    public function scopeWithPrimaryImage($query)
+    {
+        return $query->with('primaryImage');
     }
 }
