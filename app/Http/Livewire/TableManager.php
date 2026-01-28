@@ -9,12 +9,12 @@ use App\Models\Outlet;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-// [WAJIB] Import Library QR Code
+// [WAJIB] Import QR Library
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class TableManager extends Component
 {
-    // Properties
+    // Table Properties
     public $tableId;
     public $outlet_id;
     public $table_area_id;
@@ -36,7 +36,7 @@ class TableManager extends Component
     public $selectedOutlet;
     public $selectedArea;
     
-    // QR Modal
+    // QR Code Modal
     public $showQRModal = false;
     public $viewingTable = null; 
     public $qrCodeUrl;           
@@ -100,23 +100,25 @@ class TableManager extends Component
             'outlets' => $outlets,
             'tables' => $tables,
             'areas' => $areas,
-        ]);
+        ])
+        // [FIX] Sidebar Active State
+        ->layout('layouts.app', ['activePage' => 'tables']);
     }
 
-    // ==================== QR CODE LOGIC ====================
+    // ==================== QR CODE ACTIONS ====================
 
     public function showQR($id)
     {
         $table = Table::with('tableArea')->findOrFail($id);
         $this->viewingTable = $table;
         
-        // [SMART LINK] Ambil URL cerdas dari Model (Google vs Internal)
+        // [SMART LOGIC] Menggunakan accessor dari Model (Cek Google vs Internal)
         $fullUrl = $table->qr_url;
         
         $this->qrCodeUrl = $fullUrl;
         $this->qrCodeValue = $table->qr_code;
 
-        // [GENERATOR] Cek library sebelum generate
+        // Generate QR Code SVG
         if (class_exists('SimpleSoftwareIO\QrCode\Facades\QrCode')) {
             $this->generatedQrSvg = QrCode::size(250)
                 ->color(0, 0, 0)
@@ -124,7 +126,7 @@ class TableManager extends Component
                 ->margin(2)
                 ->generate($fullUrl);
         } else {
-            $this->generatedQrSvg = '<div class="text-danger text-center p-3 border border-danger">Library QR Error.<br>Run: composer require simplesoftwareio/simple-qrcode</div>';
+            $this->generatedQrSvg = '<div class="text-danger p-3 border border-danger">Library QR Error. Run: composer require simplesoftwareio/simple-qrcode</div>';
         }
 
         $this->showQRModal = true;
@@ -133,23 +135,23 @@ class TableManager extends Component
     public function regenerateQR($id)
     {
         $table = Table::findOrFail($id);
-        $table->update(['qr_code' => Str::random(16)]);
+        $newCode = Str::random(16); // Kode Acak
+        $table->update(['qr_code' => $newCode]);
         
-        // Refresh tampilan modal jika sedang terbuka
         if ($this->viewingTable && $this->viewingTable->id == $id) {
             $this->showQR($id);
         }
         
-        session()->flash('message', 'QR Code berhasil di-regenerate!');
+        session()->flash('message', 'QR Code baru berhasil dibuat!');
     }
 
-    // ==================== CRUD TABLES ====================
+    // ==================== TABLE CRUD ====================
 
     public function saveTable()
     {
         $this->validate();
 
-        // Auto-generate kode acak jika kosong
+        // Auto Generate QR jika kosong
         if (empty($this->qr_code)) {
             $this->qr_code = Str::random(16);
         }
@@ -174,7 +176,7 @@ class TableManager extends Component
             session()->flash('message', 'Meja berhasil ditambahkan!');
         }
         
-        // [FIX] Tutup Modal Otomatis
+        // Tutup Modal via JS Dispatch
         $this->dispatch('close-modal');
         $this->resetTableForm();
     }
@@ -197,7 +199,7 @@ class TableManager extends Component
     {
         $table = Table::findOrFail($id);
         if ($table->current_order_id) {
-            session()->flash('error', 'Gagal hapus: Ada pesanan aktif!');
+            session()->flash('error', 'Gagal hapus: Ada pesanan aktif di meja ini.');
             return;
         }
         $table->delete();
@@ -219,7 +221,7 @@ class TableManager extends Component
         $this->is_table_active = true;
     }
 
-    // ==================== CRUD AREAS ====================
+    // ==================== AREA CRUD ====================
     public function saveArea() {
         $this->validate($this->areaRules);
         $data = ['outlet_id'=>$this->outlet_id, 'name'=>$this->areaName, 'sort_order'=>$this->area_sort_order, 'is_active'=>$this->is_area_active];
@@ -239,7 +241,6 @@ class TableManager extends Component
     public function cancelAreaEdit() { $this->resetAreaForm(); }
     private function resetAreaForm() { $this->reset(['areaId', 'areaName', 'area_sort_order', 'is_area_active', 'isEditingArea']); $this->is_area_active = true; }
     
-    // Properties
     public function updatedSelectedOutlet($v) { $this->outlet_id = $v; $this->selectedArea = null; }
     public function getTableFormTitleProperty() { return $this->isEditingTable ? 'Edit Meja' : 'Tambah Meja'; }
     public function getAreaFormTitleProperty() { return $this->isEditingArea ? 'Edit Area' : 'Tambah Area'; }

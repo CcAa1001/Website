@@ -697,7 +697,9 @@ class POSSystem extends Component
         }
 
         return view('livewire.pos-system', [
-            'tables' => $tables,
-        ]);
+            'products' => $products,
+            'categories' => $categories,
+        ])
+        ->layout('layouts.app', ['activePage' => 'pos']); // <--- TAMBAHKAN INI
     }
 }

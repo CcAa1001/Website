@@ -4,7 +4,7 @@ namespace App\Http\Livewire;
 
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Models\InventoryItem; // Menggunakan Model Inventory
+use App\Models\InventoryItem; 
 use Illuminate\Validation\Rule;
 
 class InventoryManager extends Component
@@ -17,7 +17,7 @@ class InventoryManager extends Component
     public $itemId;
     public $name;
     public $sku;
-    public $unit = 'kg'; // Default unit
+    public $unit = 'kg'; 
     public $cost_per_unit;
     public $current_stock;
     public $reorder_level;
@@ -33,7 +33,6 @@ class InventoryManager extends Component
     {
         return [
             'name' => 'required|min:2|max:255',
-            // Validasi SKU unik per tenant
             'sku' => [
                 'nullable', 
                 'max:50',
@@ -50,18 +49,16 @@ class InventoryManager extends Component
 
     public function mount()
     {
-        // Pastikan user login
         if (!auth()->check()) {
             return redirect()->route('login');
         }
     }
 
-    // ==================== RENDER ====================
+    // ==================== RENDER (FIXED) ====================
     public function render()
     {
         $user = auth()->user();
 
-        // Ambil data inventory milik tenant user ini
         $query = InventoryItem::where('tenant_id', $user->tenant_id);
 
         if ($this->search) {
@@ -75,8 +72,9 @@ class InventoryManager extends Component
 
         return view('livewire.inventory-manager', [
             'items' => $items
-        ]);
-    }
+        ])
+        ->layout('layouts.app', ['activePage' => 'inventory']); 
+    } // <--- KURUNG KURAWAL INI TADI GANDA, SEKARANG SUDAH BENAR (CUMA SATU)
 
     // ==================== ACTIONS ====================
 
@@ -130,9 +128,6 @@ class InventoryManager extends Component
             session()->flash('message', 'Bahan baku berhasil diupdate.');
         } else {
             $data['tenant_id'] = $user->tenant_id;
-            // Jika ingin inventory per outlet, uncomment baris ini:
-            // $data['outlet_id'] = $user->outlet_id; 
-            
             InventoryItem::create($data);
             session()->flash('message', 'Bahan baku berhasil ditambahkan.');
         }
@@ -153,8 +148,6 @@ class InventoryManager extends Component
         }
     }
 
-    // ==================== HELPERS ====================
-
     public function closeModal()
     {
         $this->isModalOpen = false;
@@ -166,7 +159,7 @@ class InventoryManager extends Component
         $this->itemId = null;
         $this->name = '';
         $this->sku = '';
-        $this->unit = 'kg'; // Reset ke default
+        $this->unit = 'kg'; 
         $this->cost_per_unit = '';
         $this->current_stock = '';
         $this->reorder_level = '';

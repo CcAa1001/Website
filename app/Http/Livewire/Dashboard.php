@@ -24,7 +24,6 @@ class Dashboard extends Component
     #[On('refreshDashboard')]
     public function refresh()
     {
-        // This method will be called when 'refreshDashboard' event is dispatched
         $this->render();
     }
 
@@ -32,7 +31,7 @@ class Dashboard extends Component
     {
         $tenantId = auth()->user()->tenant_id;
 
-        // Sales data for 7 days
+        // Sales Chart Data
         $sales = Order::where('tenant_id', $tenantId)
             ->where('created_at', '>=', now()->subDays(6))
             ->select(DB::raw('DATE(created_at) as sales_date'), DB::raw('SUM(grand_total) as total'))
@@ -45,7 +44,7 @@ class Dashboard extends Component
             'values' => $sales->pluck('total')->toArray(),
         ];
 
-        // Top categories
+        // Top Categories Chart
         $categories = DB::table('order_items')
             ->join('products', 'order_items.product_id', '=', 'products.id')
             ->join('categories', 'products.category_id', '=', 'categories.id')
@@ -67,22 +66,16 @@ class Dashboard extends Component
         $tenantId = auth()->user()->tenant_id;
         $outletId = auth()->user()->outlet_id;
 
-        // Active QR orders with items and modifiers
+        // [FIX] Menampilkan SEMUA Order Aktif (POS + QR)
+        // Saya menghapus where('order_source', 'qr_scan') agar order dari POS juga masuk
         $activeOrders = Order::where('tenant_id', $tenantId)
             ->where('outlet_id', $outletId)
             ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])
-            ->where('order_source', 'qr_scan')
             ->with(['table', 'items', 'customer'])
-            ->orderBy('created_at', 'asc') // Oldest first
+            ->orderBy('created_at', 'asc')
             ->get();
 
-        // Debug: Log the statuses we're getting
-        \Log::info('Dashboard Orders:', [
-            'total' => $activeOrders->count(),
-            'statuses' => $activeOrders->pluck('status')->toArray(),
-        ]);
-
-        // Group orders by status for Kanban board
+        // Grouping status for Kanban
         $ordersByStatus = [
             'pending' => $activeOrders->where('status', 'pending')->values(),
             'confirmed' => $activeOrders->where('status', 'confirmed')->values(),
@@ -90,21 +83,20 @@ class Dashboard extends Component
             'ready' => $activeOrders->where('status', 'ready')->values(),
         ];
 
-        // Active sessions
+        // Active Tables
         $activeSessions = TableSession::where('tenant_id', $tenantId)
             ->where('outlet_id', $outletId)
             ->active()
             ->with(['table', 'orders'])
             ->get();
 
-        // Table stats
+        // Stats
         $tableStats = [
             'total' => Table::where('outlet_id', $outletId)->count(),
             'occupied' => Table::where('outlet_id', $outletId)->where('status', 'occupied')->count(),
             'available' => Table::where('outlet_id', $outletId)->where('status', 'available')->count(),
         ];
 
-        // Calculate today's stats
         $todaysOrders = Order::where('tenant_id', $tenantId)
             ->whereDate('created_at', now())
             ->get();
@@ -119,7 +111,9 @@ class Dashboard extends Component
             'ordersByStatus' => $ordersByStatus,
             'activeSessions' => $activeSessions,
             'tableStats' => $tableStats,
-        ]);
+        ])
+        // [FIX] Mengirim variabel 'activePage' ke Layout agar sidebar menyala
+        ->layout('layouts.app', ['activePage' => 'dashboard']);
     }
 
     public function quickUpdateStatus($orderId, $newStatus)
