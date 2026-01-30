@@ -31,22 +31,35 @@ use App\Http\Livewire\PosSystem;
 
 // [FIX] LOGIC LOGIN MEJA (Redirector)
 // URL: http://127.0.0.1:8000/table/QR-JKT-01-5
+// [FIXED] LOGIC LOGIN MEJA (PostgreSQL UUID Friendly)
+// URL: http://127.0.0.1:8000/table/QR-JKT-01-5
 Route::get('/table/{code}', function ($code) {
-    // 1. Cari Meja berdasarkan QR Code (prioritas) atau ID
-    $table = Table::where('qr_code', $code)
-        ->orWhere('id', $code)
-        ->first();
+    // Import model Table di dalam closure jika belum di-import di atas file
+    // use App\Models\Table; 
 
-    if (!$table) {
-        abort(404, 'Meja tidak ditemukan atau kode salah.');
+    // 1. Validasi format UUID menggunakan Regex agar tidak error di PostgreSQL
+    $isUuid = preg_match('/^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i', $code);
+
+    // 2. Cari Meja dengan logika yang aman
+    $query = App\Models\Table::where('qr_code', $code);
+    
+    // Hanya tambahkan pencarian ID jika input adalah UUID yang valid
+    if ($isUuid) {
+        $query->orWhere('id', $code);
     }
 
-    // 2. Simpan Sesi Meja
+    $table = $query->first();
+
+    if (!$table) {
+        abort(404, 'Meja tidak ditemukan atau kode QR salah.');
+    }
+
+    // 3. Simpan Sesi Meja
     session()->put('table_id', $table->id);
     session()->put('outlet_id', $table->outlet_id);
-    session()->put('tenant_id', $table->tenant_id); // Penting untuk filter produk
+    session()->put('tenant_id', $table->tenant_id);
 
-    // 3. Redirect ke Menu Utama
+    // 4. Redirect ke Menu Utama
     return redirect()->route('table.menu');
 
 })->name('table.login');

@@ -203,7 +203,7 @@ class POSSystem extends Component
         $this->cart[$cartKey] = [
             'product_id' => $product->id,
             'product_name' => $product->name,
-            'product_image' => $product->medium_image,
+            'product_image' => $product->medium_image ?? $product->primaryImage?->url ?? null,
             'sku' => $product->sku,
             'base_price' => $product->base_price,
             'quantity' => 1,
@@ -441,6 +441,7 @@ class POSSystem extends Component
         
         // Load order data
         $this->cart = $parkedOrder['cart'];
+        
         $this->orderType = $parkedOrder['order_type'];
         $this->selectedTable = $parkedOrder['selected_table'];
         $this->customerName = $parkedOrder['customer_name'];
@@ -686,45 +687,18 @@ class POSSystem extends Component
 
     public function render()
     {
-        $user = auth()->user();
+        $tables = [];
         
-        // 1. Ambil Kategori
-        $categories = \App\Models\Category::where('tenant_id', $user->tenant_id)
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->get();
-
-        // 2. Query Produk (Pastikan variabel ini SELALU terdefinisi)
-        $query = \App\Models\Product::where('tenant_id', $user->tenant_id)
-            ->where('is_available', true);
-
-        // Filter berdasarkan kategori jika ada
-        if ($this->selectedCategory) {
-            $query->where('category_id', $this->selectedCategory);
+        if ($this->orderType === 'dine_in') {
+            $user = auth()->user();
+            $tables = Table::where('outlet_id', $user->outlet_id)
+                ->where('is_active', true)
+                ->orderBy('table_number')
+                ->get();
         }
 
-        // Filter pencarian jika ada
-        if ($this->search) {
-            $query->where('name', 'like', '%' . $this->search . '%');
-        }
-
-        // Eksekusi query
-        $products = $query->orderBy('sort_order')->get();
-
-        // 3. Ambil Meja (Untuk perbaikan "Meja tidak bisa diakses")
-        $tables = \App\Models\Table::where('outlet_id', $user->outlet_id)
-            ->where('is_active', true)
-            ->get();
-
-        // 4. Return View
         return view('livewire.pos-system', [
-            'categories' => $categories,
-            'products' => $products, // Variabel ini sekarang aman
             'tables' => $tables,
-            'cart' => $this->cart,
-            'subtotal' => $this->subtotal,
-            'tax' => $this->tax,
-            'total' => $this->total
         ]);
     }
 }

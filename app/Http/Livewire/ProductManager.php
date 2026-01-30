@@ -12,7 +12,7 @@ use App\Models\ModifierGroup;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule; // Tambahkan ini untuk validasi unik
+use Illuminate\Validation\Rule;
 
 class ProductManager extends Component
 {
@@ -20,7 +20,7 @@ class ProductManager extends Component
 
     protected $paginationTheme = 'bootstrap';
 
-    // ==================== FORM PROPERTIES ====================
+    // ==================== PROPERTIES ====================
     public $productId;
     public $name;
     public $sku;
@@ -29,10 +29,10 @@ class ProductManager extends Component
     public $category_id;
     public $base_price;
     public $cost_price;
-    public $image_url; // Menyimpan path gambar di DB
-    public $imageFile; // Menyimpan file upload sementara
-    public $currentImageUrl; // Untuk preview gambar lama
-    public $product_type = 'single'; // single or variable
+    public $image_url; 
+    public $imageFile; 
+    public $currentImageUrl; 
+    public $product_type = 'single'; 
     public $preparation_time = 15;
     public $calories;
     public $is_available = true;
@@ -45,13 +45,16 @@ class ProductManager extends Component
     public $tags = '';
     public $allergens = '';
     
-    // Variants
-    public $variants = [];
-    public $showVariants = false;
-    
     // UI State
     public $isEditing = false;
     public $activeTab = 'products';
+    public $viewMode = 'grid';
+    
+    // MODAL CONTROL (Perbaikan Error $showModal)
+    public $showModal = false; 
+    public $modalMode = 'create'; // 'create' or 'edit'
+
+    public $selectedProducts = []; 
 
     // ==================== FILTERS ====================
     public $search = '';
@@ -68,9 +71,8 @@ class ProductManager extends Component
             'base_price' => 'required|numeric|min:0',
             'cost_price' => 'nullable|numeric|min:0',
             'product_type' => 'required|in:single,variable',
-            'imageFile' => 'nullable|image|max:2048', // Max 2MB
+            'imageFile' => 'nullable|image|max:2048', 
             
-            // [FIX] Validasi Unik SKU & Slug per Tenant (Biar tidak bentrok)
             'sku' => [
                 'nullable', 'max:50',
                 Rule::unique('products', 'sku')
@@ -99,15 +101,16 @@ class ProductManager extends Component
         }
     }
 
+    // ==================== RENDER ====================
     public function render()
     {
         $user = auth()->user();
 
-        // Query Products
+        // 1. Query Products
         $query = Product::where('tenant_id', $user->tenant_id)
-            ->with(['category', 'variants']);
+            ->with(['category']);
 
-        // 1. Search
+        // Search
         if ($this->search) {
             $query->where(function($q) {
                 $q->where('name', 'like', '%' . $this->search . '%')
@@ -115,7 +118,7 @@ class ProductManager extends Component
             });
         }
 
-        // 2. Filters
+        // Filters
         if ($this->filterCategory) {
             $query->where('category_id', $this->filterCategory);
         }
@@ -128,7 +131,7 @@ class ProductManager extends Component
             $query->where('is_featured', $this->filterFeatured === 'featured');
         }
 
-        // 3. Sorting
+        // Sorting
         switch ($this->sortBy) {
             case 'name_asc': $query->orderBy('name', 'asc'); break;
             case 'name_desc': $query->orderBy('name', 'desc'); break;
@@ -140,20 +143,48 @@ class ProductManager extends Component
 
         $products = $query->paginate(15);
 
-        // Get Categories for Dropdown
+        // 2. Get Categories for Dropdown
         $categories = Category::where('tenant_id', $user->tenant_id)
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
+        // 3. Stats
+        $stats = [
+            'total' => Product::where('tenant_id', $user->tenant_id)->count(),
+            'available' => Product::where('tenant_id', $user->tenant_id)->where('is_available', true)->count(),
+            'unavailable' => Product::where('tenant_id', $user->tenant_id)->where('is_available', false)->count(),
+            'featured' => Product::where('tenant_id', $user->tenant_id)->where('is_featured', true)->count(),
+        ];
+
         return view('livewire.product-manager', [
             'products' => $products,
             'categories' => $categories,
+            'stats' => $stats
         ]);
     }
 
     // ==================== ACTIONS ====================
+
+    public function setViewMode($mode)
+    {
+        $this->viewMode = $mode;
+    }
+
+    public function openCreateModal()
+    {
+        $this->resetForm();
+        $this->isEditing = false;
+        $this->modalMode = 'create'; // Set mode create
+        $this->showModal = true; // Buka modal
+    }
+
+    public function closeModal()
+    {
+        $this->showModal = false;
+        $this->resetForm();
+    }
 
     public function save()
     {
@@ -185,13 +216,11 @@ class ProductManager extends Component
 
             // Handle Image Upload
             if ($this->imageFile) {
-                // Delete old image if exists
                 if ($this->isEditing && $this->currentImageUrl) {
                     Storage::disk('public')->delete($this->currentImageUrl);
                 }
                 $data['image_url'] = $this->imageFile->store('products', 'public');
             } elseif ($this->image_url) {
-                // Keep existing or use external URL
                 $data['image_url'] = $this->image_url;
             }
 
@@ -200,7 +229,7 @@ class ProductManager extends Component
                     ->where('tenant_id', $user->tenant_id)
                     ->firstOrFail();
                 
-                unset($data['tenant_id']); // Protect Tenant ID
+                unset($data['tenant_id']); 
                 $product->update($data);
                 $message = 'Produk berhasil diupdate!';
             } else {
@@ -210,7 +239,7 @@ class ProductManager extends Component
 
             DB::commit();
             session()->flash('message', $message);
-            $this->resetForm();
+            $this->closeModal(); // Tutup modal setelah save
             
         } catch (\Exception $e) {
             DB::rollBack();
@@ -232,7 +261,7 @@ class ProductManager extends Component
         $this->category_id = $product->category_id;
         $this->base_price = $product->base_price;
         $this->cost_price = $product->cost_price;
-        $this->currentImageUrl = $product->image_url; // Simpan path lama
+        $this->currentImageUrl = $product->image_url; 
         $this->product_type = $product->product_type ?? 'single';
         $this->preparation_time = $product->preparation_time;
         $this->calories = $product->calories;
@@ -245,9 +274,10 @@ class ProductManager extends Component
         $this->allergens = $this->arrayToString($product->allergens);
         
         $this->isEditing = true;
-        
-        // Reset file upload field
+        $this->modalMode = 'edit';
         $this->imageFile = null; 
+        
+        $this->showModal = true;
     }
 
     public function delete($id)
@@ -256,13 +286,11 @@ class ProductManager extends Component
             ->where('tenant_id', auth()->user()->tenant_id)
             ->firstOrFail();
 
-        // Cek ketergantungan sebelum hapus
         if (ModifierGroup::where('product_id', $id)->exists()) {
             session()->flash('error', 'Produk memiliki modifier. Hapus modifier terlebih dahulu!');
             return;
         }
 
-        // Hapus gambar fisik
         if ($product->image_url && Storage::disk('public')->exists($product->image_url)) {
             Storage::disk('public')->delete($product->image_url);
         }
@@ -338,7 +366,7 @@ class ProductManager extends Component
             'productId', 'name', 'sku', 'slug', 'description', 'category_id',
             'base_price', 'cost_price', 'image_url', 'imageFile', 'currentImageUrl',
             'product_type', 'preparation_time', 'calories', 'sort_order',
-            'tags', 'allergens', 'isEditing', 'showVariants'
+            'tags', 'allergens', 'isEditing'
         ]);
         
         $this->is_available = true;
@@ -347,8 +375,6 @@ class ProductManager extends Component
         $this->preparation_time = 15;
     }
 
-    public function getFormTitleProperty()
-    {
-        return $this->isEditing ? 'Edit Produk' : 'Tambah Produk Baru';
-    }
+    public function bulkActivate() { /* Placeholder */ }
+    public function bulkDeactivate() { /* Placeholder */ }
 }

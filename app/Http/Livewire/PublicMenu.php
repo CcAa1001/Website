@@ -27,65 +27,33 @@ class PublicMenu extends Component
     public $orderSuccess = false;
     public $orderNumberStr = '';
 
-    // public function mount($tableNumber)
-    // {
-    //     $this->tableNumber = $tableNumber;
-    //     $table = Table::where('table_number', $tableNumber)->first();
+    public function mount($tableNumber)
+    {
+        $this->tableNumber = $tableNumber;
+        $table = Table::where('table_number', $tableNumber)->first();
 
-    //     if (!$table) {
-    //         abort(404, 'Table not found. Please scan a valid QR.');
-    //     }
-
-    //     $this->tableId = $table->id;
-    //     $this->outletId = $table->outlet_id;
-        
-    //     // Robust check for Tenant ID
-    //     $this->tenantId = $table->outlet ? $table->outlet->tenant_id : null;
-
-    //     // Fallback: If table has no outlet, try to find the first tenant (for testing)
-    //     if (!$this->tenantId) {
-    //          $firstTenant = \App\Models\Tenant::first();
-    //          $this->tenantId = $firstTenant ? $firstTenant->id : null;
-    //     }
-
-    //     if (!$this->tenantId) {
-    //         abort(500, 'System Configuration Error: No Tenant associated with this outlet.');
-    //     }
-
-    //     $this->categories = Category::where('tenant_id', $this->tenantId)->get();
-    //     $this->loadProducts();
-    // }
-
-// app/Http/Livewire/PublicMenu.php
-    public function mount($table_id = null) {
-        if ($table_id) {
-            // [FIX] Coba cari berdasarkan QR Code (String Custom) dulu
-            $this->table = \App\Models\Table::where('qr_code', $table_id)->first();
-
-            // Jika tidak ketemu, baru coba cari berdasarkan ID (UUID)
-            if (!$this->table) {
-                // Validasi apakah string adalah UUID valid sebelum query find()
-                if (\Illuminate\Support\Str::isUuid($table_id)) {
-                    $this->table = \App\Models\Table::find($table_id);
-                }
-            }
-
-            if ($this->table) {
-                // Simpan sesi meja
-                session()->put('table_id', $this->table->id);
-                
-                // [FIX] Set Tenant ID agar produk muncul
-                $this->tenantId = $this->table->tenant_id; 
-            } else {
-                abort(404, 'Meja tidak ditemukan.');
-            }
+        if (!$table) {
+            abort(404, 'Table not found. Please scan a valid QR.');
         }
+
+        $this->tableId = $table->id;
+        $this->outletId = $table->outlet_id;
         
-        // [FIX] Load Kategori & Produk setelah Tenant ID diketahui
-        if ($this->tenantId) {
-            $this->categories = \App\Models\Category::where('tenant_id', $this->tenantId)->get();
-            $this->loadProducts();
+        // Robust check for Tenant ID
+        $this->tenantId = $table->outlet ? $table->outlet->tenant_id : null;
+
+        // Fallback: If table has no outlet, try to find the first tenant (for testing)
+        if (!$this->tenantId) {
+             $firstTenant = \App\Models\Tenant::first();
+             $this->tenantId = $firstTenant ? $firstTenant->id : null;
         }
+
+        if (!$this->tenantId) {
+            abort(500, 'System Configuration Error: No Tenant associated with this outlet.');
+        }
+
+        $this->categories = Category::where('tenant_id', $this->tenantId)->get();
+        $this->loadProducts();
     }
 
     public function loadProducts()

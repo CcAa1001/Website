@@ -24,7 +24,7 @@
             </ul>
         </div>
         
-        <a href="{{ route('home') }}" class="btn_back_home">
+        <a href="{{ url('/') }}" class="btn_back_home">
             <i class="fas fa-home"></i> Kembali ke Beranda
         </a>
     </div>
