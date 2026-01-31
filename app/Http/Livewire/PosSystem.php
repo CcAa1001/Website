@@ -699,6 +699,6 @@ class POSSystem extends Component
 
         return view('livewire.pos-system', [
             'tables' => $tables,
-        ]);
+        ])->layout('layouts.app', ['titlePage' => 'Point of Sales']);
     }
 }

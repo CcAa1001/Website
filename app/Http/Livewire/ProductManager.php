@@ -9,8 +9,8 @@ use App\Models\Product;
 use App\Models\Category;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 
 class ProductManager extends Component
 {
@@ -22,53 +22,36 @@ class ProductManager extends Component
     public $productId;
     public $name, $sku, $description;
     public $category_id;
-    public $base_price, $cost_price;
+    public $base_price = 0, $cost_price = 0;
     
+    // Inventory
+    public $stock = 0;
+    public $min_stock = 5;
+    
+    // Settings
+    public $is_available = true;
+    public $is_featured = false;
+    // public $stock_status = 'in_stock'; // Kita pakai logic stock angka saja agar lebih akurat
+
     // Image Handling
     public $imageFile; // Uploaded file temp
     public $currentImageUrl; // Existing image path from DB
-    
-    // Settings
-    public $product_type = 'single';
-    public $is_available = true;
-    public $is_featured = false;
-    public $stock_status = 'in_stock';
-    
+
     // UI States
     public $showModal = false;
     public $modalMode = 'create';
     public $search = '';
     public $filterCategory = '';
 
-    // Listeners
     protected $listeners = ['refreshComponent' => '$refresh'];
 
     public function mount()
     {
-        // Pastikan user login & punya tenant
         if (!auth()->check()) {
             return redirect()->route('login');
         }
     }
 
-    protected function rules()
-    {
-        return [
-            'name' => 'required|min:2|max:255',
-            'category_id' => 'required|exists:categories,id',
-            'base_price' => 'required|numeric|min:0',
-            'sku' => [
-                'nullable', 
-                'max:50',
-                Rule::unique('products', 'sku')
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->ignore($this->productId)
-            ],
-            'imageFile' => 'nullable|image|max:5120', // Max 5MB
-        ];
-    }
-
-    // --- RENDER ---
     public function render()
     {
         $user = auth()->user();
@@ -76,6 +59,7 @@ class ProductManager extends Component
         $query = Product::where('tenant_id', $user->tenant_id)
             ->with('category');
 
+        // Search
         if ($this->search) {
             $query->where(function($q) {
                 $q->where('name', 'like', '%' . $this->search . '%')
@@ -83,13 +67,17 @@ class ProductManager extends Component
             });
         }
 
+        // Filter Category
         if ($this->filterCategory) {
             $query->where('category_id', $this->filterCategory);
         }
 
-        $products = $query->orderBy('created_at', 'desc')->paginate(10);
+        $products = $query->orderBy('created_at', 'desc')->paginate(12); // Grid 3x4 = 12 items
         
-        $categories = Category::where('tenant_id', $user->tenant_id)->orderBy('name')->get();
+        $categories = Category::where('tenant_id', $user->tenant_id)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
 
         return view('livewire.product-manager', [
             'products' => $products,
@@ -102,6 +90,7 @@ class ProductManager extends Component
     public function openCreateModal()
     {
         $this->resetForm();
+        $this->sku = strtoupper(Str::random(8)); // Auto SKU
         $this->modalMode = 'create';
         $this->showModal = true;
     }
@@ -110,10 +99,7 @@ class ProductManager extends Component
     {
         $product = Product::findOrFail($id);
         
-        // Security Check
-        if ($product->tenant_id !== auth()->user()->tenant_id) {
-            abort(403);
-        }
+        if ($product->tenant_id !== auth()->user()->tenant_id) abort(403);
 
         $this->productId = $product->id;
         $this->name = $product->name;
@@ -122,6 +108,8 @@ class ProductManager extends Component
         $this->category_id = $product->category_id;
         $this->base_price = $product->base_price;
         $this->cost_price = $product->cost_price;
+        $this->stock = $product->stock; // Asumsi ada kolom stock
+        $this->min_stock = $product->min_stock; // Asumsi ada kolom min_stock
         $this->currentImageUrl = $product->image_url;
         $this->is_available = $product->is_available;
         $this->is_featured = $product->is_featured;
@@ -132,7 +120,22 @@ class ProductManager extends Component
 
     public function save()
     {
-        $this->validate();
+        $this->validate([
+            'name' => 'required|min:2|max:255',
+            'category_id' => 'required|exists:categories,id',
+            'base_price' => 'required|numeric|min:0',
+            'cost_price' => 'nullable|numeric|min:0',
+            'stock' => 'nullable|integer|min:0',
+            'sku' => [
+                'nullable', 
+                'max:50',
+                Rule::unique('products', 'sku')
+                    ->where('tenant_id', auth()->user()->tenant_id)
+                    ->ignore($this->productId)
+            ],
+            'imageFile' => 'nullable|image|max:5120', // Max 5MB
+        ]);
+
         $user = auth()->user();
 
         DB::beginTransaction();
@@ -140,41 +143,36 @@ class ProductManager extends Component
             $data = [
                 'tenant_id' => $user->tenant_id,
                 'name' => $this->name,
-                'slug' => Str::slug($this->name) . '-' . Str::random(4),
-                'sku' => $this->sku,
+                // Slug hanya dibuat saat create, atau update jika mau (disini kita keep simple)
+                'sku' => $this->sku ?: strtoupper(Str::random(8)),
                 'description' => $this->description,
                 'category_id' => $this->category_id,
                 'base_price' => $this->base_price,
-                'cost_price' => $this->cost_price,
+                'cost_price' => $this->cost_price ?? 0,
+                'stock' => $this->stock ?? 0,
+                'min_stock' => $this->min_stock ?? 5,
                 'is_available' => $this->is_available,
                 'is_featured' => $this->is_featured,
             ];
 
             // Handle Image
             if ($this->imageFile) {
-                // Hapus gambar lama jika ada dan sedang edit
                 if ($this->modalMode === 'edit' && $this->currentImageUrl) {
                     Storage::disk('public')->delete($this->currentImageUrl);
                 }
-                
-                $path = $this->imageFile->store('products', 'public');
-                $data['image_url'] = $path;
+                $data['image_url'] = $this->imageFile->store('products', 'public');
             }
 
             if ($this->modalMode === 'edit') {
                 $product = Product::findOrFail($this->productId);
                 
-                // Keep old slug if name hasn't changed drastically or handle slug updates specifically
-                // For simplicity, we update slug only on create usually, but here we updated it above. 
-                // Let's prevent slug collision issues on update if desired, but Random(4) handles it.
+                // Jangan update slug saat edit untuk menjaga SEO/Link (optional)
+                // unset($data['slug']); 
                 
-                // Jangan update tenant_id saat edit
-                unset($data['tenant_id']); 
-                if(!$this->imageFile) unset($data['image_url']);
-
                 $product->update($data);
                 session()->flash('message', 'Produk berhasil diperbarui.');
             } else {
+                $data['slug'] = Str::slug($this->name) . '-' . Str::random(4);
                 Product::create($data);
                 session()->flash('message', 'Produk baru berhasil ditambahkan.');
             }
@@ -201,6 +199,20 @@ class ProductManager extends Component
         session()->flash('message', 'Produk dihapus.');
     }
 
+    public function removeImage()
+    {
+        if ($this->currentImageUrl) {
+            Storage::disk('public')->delete($this->currentImageUrl);
+            
+            if ($this->productId) {
+                Product::find($this->productId)->update(['image_url' => null]);
+            }
+            
+            $this->currentImageUrl = null;
+            session()->flash('message', 'Foto produk dihapus.');
+        }
+    }
+
     public function closeModal()
     {
         $this->showModal = false;
@@ -211,9 +223,9 @@ class ProductManager extends Component
     {
         $this->reset([
             'productId', 'name', 'sku', 'description', 'category_id', 
-            'base_price', 'cost_price', 'imageFile', 'currentImageUrl', 
-            'is_available', 'is_featured'
+            'base_price', 'cost_price', 'stock', 'min_stock',
+            'imageFile', 'currentImageUrl', 'is_available', 'is_featured'
         ]);
-        $this->is_available = true; // Default
+        $this->is_available = true;
     }
 }

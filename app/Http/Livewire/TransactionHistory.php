@@ -17,18 +17,24 @@ class TransactionHistory extends Component
     protected $paginationTheme = 'bootstrap';
 
     // Filters
-    public $dateRange = 'today'; // today, week, month, custom, all
+    public $dateRange = 'today'; // today, yesterday, week, month, custom
     public $customStartDate;
     public $customEndDate;
     public $search = '';
     public $filterPaymentStatus = 'all';
 
-    // Modal Receipt
+    // UI Control
     public $showReceiptModal = false;
     public $selectedOrder = null;
-    
-    // Expandable Rows
     public $expandedOrderId = null;
+
+    // Listeners agar komponen lain bisa trigger refresh jika perlu
+    protected $listeners = ['refreshTransactions' => '$refresh'];
+
+    // Reset pagination saat filter berubah agar tidak error
+    public function updatedDateRange() { $this->resetPage(); }
+    public function updatedFilterPaymentStatus() { $this->resetPage(); }
+    public function updatedSearch() { $this->resetPage(); }
 
     public function mount()
     {
@@ -42,22 +48,22 @@ class TransactionHistory extends Component
     {
         $user = auth()->user();
         
-        // Base Query
+        // 1. QUERY DASAR (Sesuai Tenant)
         $query = Order::where('tenant_id', $user->tenant_id)
-            ->with(['items', 'table', 'payments', 'outlet', 'refunds']);
+            ->with(['items.product', 'table', 'payments', 'outlet', 'refunds']); // Eager load product untuk cost_price
 
-        // 1. Filter Date
-        $this->applyDateFilter($query);
+        // 2. FILTER TANGGAL (Logic Sentral)
+        $query = $this->applyDateFilter($query);
 
-        // 2. Filter Status
+        // 3. FILTER STATUS PEMBAYARAN
         if ($this->filterPaymentStatus !== 'all') {
             $query->where('payment_status', $this->filterPaymentStatus);
         } else {
-            // Default tampilkan yang paid/completed/refunded (bukan pending/unpaid)
+            // Default: Tampilkan yang sudah dibayar atau refund (bukan pending/unpaid/draft)
             $query->whereIn('payment_status', ['paid', 'partial', 'refunded']);
         }
 
-        // 3. Search
+        // 4. SEARCH
         if ($this->search) {
             $query->where(function($q) {
                 $q->where('order_number', 'like', '%' . $this->search . '%')
@@ -65,34 +71,62 @@ class TransactionHistory extends Component
             });
         }
 
-        // Clone query for stats
-        $statsQuery = clone $query;
+        // ---------------------------------------------
+        // PERHITUNGAN STATISTIK KEUANGAN (REAL FINANCE)
+        // ---------------------------------------------
         
-        // Get Paginated Data
-        $transactions = $query->latest('created_at')->paginate(10);
+        // Clone query agar perhitungan statistik menggunakan filter tanggal yang SAMA persis dengan tabel
+        // Kita gunakan get() untuk mengambil semua data (bukan paginate) khusus untuk hitung total
+        $statsQuery = clone $query;
+        $ordersForStats = $statsQuery->get(); 
 
-        // Calculate Stats
+        $totalRevenue = 0;
+        $totalCost = 0;
+        $totalRefund = 0;
+        $totalTransactions = 0;
+
+        foreach ($ordersForStats as $order) {
+            // Hitung Revenue & Transaksi (Hanya yang Paid atau Partial)
+            if (in_array($order->payment_status, ['paid', 'partial'])) {
+                $totalRevenue += $order->grand_total;
+                $totalTransactions++;
+
+                // HITUNG MODAL / HPP (Cost of Goods Sold)
+                foreach ($order->items as $item) {
+                    // Prioritas 1: Ambil 'cost_price' yang tersimpan di table order_items (snapshot saat beli)
+                    // Prioritas 2: Ambil 'cost_price' dari master product saat ini
+                    // Prioritas 3: Default 0 jika tidak ada data
+                    $costPerItem = $item->cost_price ?? ($item->product->cost_price ?? 0);
+                    $totalCost += ($costPerItem * $item->quantity);
+                }
+            }
+
+            // Hitung Refund (Jika status refunded)
+            if ($order->payment_status === 'refunded') {
+                $totalRefund += $order->grand_total;
+            }
+        }
+
+        // Net Profit = Revenue - HPP (Modal)
+        $netProfit = $totalRevenue - $totalCost;
+
         $stats = [
-            'total_revenue' => $statsQuery->whereIn('status', ['paid', 'completed'])->sum('grand_total'),
-            'total_orders'  => $statsQuery->count(),
-            'total_refund'  => $statsQuery->where('status', 'refunded')->sum('grand_total'),
-            'net_profit'    => $statsQuery->whereIn('status', ['paid', 'completed'])->sum('grand_total') * 0.3, // Estimasi 30%
-            'modal'         => 0 // Bisa dihubungkan dengan cash flow nanti
+            'total_revenue' => $totalRevenue,
+            'net_profit'    => $netProfit,
+            'total_cost'    => $totalCost, // Total Modal
+            'total_tx'      => $totalTransactions,
+            'total_refund'  => $totalRefund
         ];
 
+        // ---------------------------------------------
+
         return view('livewire.transaction-history', [
-            'transactions' => $transactions,
+            'transactions' => $query->latest('created_at')->paginate(10),
             'stats' => $stats
-        ])->layout('layouts.app', ['activePage' => 'transactions', 'titlePage' => 'Laporan & Transaksi']);
+        ])->layout('layouts.app', ['titlePage' => 'Laporan & Transaksi']);
     }
 
     // --- FILTERS ---
-
-    public function setDateRange($range)
-    {
-        $this->dateRange = $range;
-        $this->resetPage();
-    }
 
     private function applyDateFilter($query)
     {
@@ -104,10 +138,13 @@ class TransactionHistory extends Component
                 $query->whereDate('created_at', Carbon::yesterday());
                 break;
             case 'week':
-                $query->whereBetween('created_at', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]);
+                // 7 Hari terakhir
+                $query->whereBetween('created_at', [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()]);
                 break;
             case 'month':
-                $query->whereMonth('created_at', Carbon::now()->month);
+                // Bulan ini
+                $query->whereMonth('created_at', Carbon::now()->month)
+                      ->whereYear('created_at', Carbon::now()->year);
                 break;
             case 'custom':
                 if ($this->customStartDate && $this->customEndDate) {
@@ -116,21 +153,23 @@ class TransactionHistory extends Component
                 }
                 break;
         }
+        return $query;
     }
 
     public function clearFilters()
     {
         $this->reset(['search', 'filterPaymentStatus', 'dateRange', 'customStartDate', 'customEndDate']);
         $this->dateRange = 'today';
+        $this->resetPage();
     }
 
-    // --- EXPORT CSV (Fitur dari LaporanManager lama) ---
+    // --- EXPORT CSV ---
 
     public function exportCSV()
     {
         $user = auth()->user();
         $query = Order::where('tenant_id', $user->tenant_id);
-        $this->applyDateFilter($query);
+        $query = $this->applyDateFilter($query); // Gunakan filter tanggal yang sama
         
         $orders = $query->get();
 
@@ -142,7 +181,7 @@ class TransactionHistory extends Component
         return Response::streamDownload(fn() => print($csv), "Laporan_Transaksi_" . date('Ymd_His') . ".csv");
     }
 
-    // --- ACTIONS ---
+    // --- ACTIONS (Receipt, Refund, Expand) ---
 
     public function showReceipt($id)
     {
@@ -164,7 +203,7 @@ class TransactionHistory extends Component
     public function processRefund($id)
     {
         $order = Order::find($id);
-        if ($order && $order->status !== 'refunded') {
+        if ($order && $order->payment_status !== 'refunded') {
             DB::transaction(function () use ($order) {
                 $order->update([
                     'status' => 'refunded',
@@ -176,7 +215,7 @@ class TransactionHistory extends Component
                     'tenant_id' => $order->tenant_id,
                     'order_id' => $order->id,
                     'amount' => $order->grand_total,
-                    'reason' => 'Refund via Admin',
+                    'reason' => 'Refund via Admin Panel',
                     'status' => 'completed'
                 ]);
             });
@@ -184,11 +223,5 @@ class TransactionHistory extends Component
             $this->showReceiptModal = false;
             session()->flash('message', 'Transaksi berhasil di-refund.');
         }
-    }
-
-    // Helper untuk view
-    public function getTotalRefunded($order)
-    {
-        return $order->refunds->where('status', 'completed')->sum('amount');
     }
 }

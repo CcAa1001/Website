@@ -5,7 +5,6 @@
         {{ $slot }}
         
     </main>
-    <x-plugins></x-plugins>
 
     @push('js')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>

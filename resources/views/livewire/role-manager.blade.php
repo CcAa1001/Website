@@ -79,18 +79,20 @@
                                                 <span class="text-secondary text-xs font-weight-bold">{{ $role->users()->count() }} Karyawan</span>
                                             </td>
                                             <td class="align-middle text-end">
-                                                <button wire:click="edit({{ $role->id }})" class="btn btn-link text-dark px-3 mb-0">
+                                                {{-- PERHATIKAN TANDA KUTIP '...' DI DALAM KURUNG --}}
+                                                <button wire:click="edit('{{ $role->id }}')" class="btn btn-link text-dark px-3 mb-0">
                                                     <i class="material-icons text-sm me-2">edit</i> Edit
                                                 </button>
-                                                @if(!in_array(strtolower($role->name), ['admin', 'super_admin']))
-                                                    <button wire:click="initiateDelete({{ $role->id }})" class="btn btn-link text-danger px-3 mb-0">
+                                                
+                                                @if(!in_array(strtolower($role->name), ['admin', 'super admin', 'super_admin']))
+                                                    <button wire:click="initiateDelete('{{ $role->id }}')" class="btn btn-link text-danger px-3 mb-0">
                                                         <i class="material-icons text-sm me-2">delete</i> Hapus
                                                     </button>
                                                 @endif
                                             </td>
                                         </tr>
 
-                                        
+
                                     @endforeach
                                 </tbody>
                             </table>
@@ -116,16 +118,20 @@
                     </div>
 
                     <label class="form-label fw-bold mb-2">Akses Menu (Permission)</label>
+                    
+                    
                     <div class="row g-2 border p-3 rounded" style="max-height: 300px; overflow-y: auto;">
                         @foreach($availablePermissions as $key => $label)
                             <div class="col-md-6">
                                 <div class="form-check ps-0">
+                                    {{-- Gunakan wire:model.live agar reaktif --}}
                                     <input class="form-check-input ms-0 me-2" type="checkbox" value="{{ $key }}" wire:model="selectedPermissions" id="perm_{{ $key }}">
-                                    <label class="custom-control-label" for="perm_{{ $key }}">{{ $label }}</label>
+                                    <label class="custom-control-label cursor-pointer" for="perm_{{ $key }}">{{ $label }}</label>
                                 </div>
                             </div>
                         @endforeach
                     </div>
+                    
                 </div>
                 <div class="card-footer p-3 bg-light text-end">
                     <button wire:click="closeModal" class="btn btn-light mb-0 me-2">Batal</button>

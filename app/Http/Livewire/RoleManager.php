@@ -4,8 +4,9 @@ namespace App\Http\Livewire;
 
 use Livewire\Component;
 use App\Models\Role;
-use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Str; // [PENTING] Jangan lupa import ini
 
 class RoleManager extends Component
 {
@@ -17,61 +18,41 @@ class RoleManager extends Component
     // Security PIN State
     public $security_pin_input = '';
     public $showPinModal = false;
-    public $pendingAction = null; // 'save' or 'delete'
+    public $pendingAction = null; 
     public $pendingId = null;
 
     public $showModal = false;
     public $modalMode = 'create';
 
-    // Daftar Menu/Permission yang tersedia di sistem
+    // Daftar Permission
     public $availablePermissions = [
         'dashboard' => 'Akses Dashboard',
         'pos' => 'Mesin Kasir (POS)',
-        'orders' => 'Manajemen Pesanan',
+        'orders' => 'Manajemen Pesanan (KDS)',
         'products' => 'Manajemen Produk',
         'inventory' => 'Stok & Inventaris',
+        'categories' => 'Kategori Produk',
         'tables' => 'Meja & QR',
-        'transactions' => 'Laporan Keuangan',
-        'customers' => 'Data Pelanggan',
+        'transactions' => 'Laporan & Transaksi',
         'users' => 'Kelola Karyawan',
         'roles' => 'Kelola Role & Akses',
         'settings' => 'Pengaturan Toko',
     ];
 
-public function mount()
+    public function mount()
     {
-        $user = auth()->user();
-
-        // 1. Cek apakah user login
-        if (!$user) {
+        if (!auth()->check()) {
             return redirect()->route('login');
         }
-
-        // 2. Ambil Nama dan Slug Role (ubah ke huruf kecil semua biar aman)
-        $roleName = strtolower($user->role->name ?? '');
-        $roleSlug = strtolower($user->role->slug ?? '');
-
-        // 3. Daftar Role yang DIPERBOLEHKAN masuk menu ini
-        $allowedRoles = [
-            'admin', 
-            'super admin', 
-            'super_admin', 
-            'master',
-            'owner'
-        ];
-
-        // 4. Cek apakah Role user ada di daftar yang boleh
-        // Cek berdasarkan Nama ATAU Slug (salah satu cocok, boleh masuk)
-        if (!in_array($roleName, $allowedRoles) && !in_array($roleSlug, $allowedRoles)) {
-            
-            // Debugging (Opsional): Uncomment baris bawah ini kalau masih gagal, 
-            // nanti akan muncul tulisan role anda sebenarnya apa di layar.
-            // dd("Role Anda saat ini terdeteksi sebagai: " . $roleName . " / Slug: " . $roleSlug);
-
-            session()->flash('error', 'Akses ditolak. Anda tidak memiliki izin.');
-            return redirect()->route('dashboard');
-        }
+        
+        // Security Check Tambahan (Opsional)
+        // $user = auth()->user();
+        // $roleSlug = strtolower($user->role->slug ?? '');
+        // if (!in_array($roleSlug, ['admin', 'super_admin'])) {
+        //     return redirect()->route('dashboard');
+        // }
     }
+
     public function render()
     {
         $this->roles = Role::all();
@@ -93,23 +74,30 @@ public function mount()
         $role = Role::findOrFail($id);
         $this->roleId = $role->id;
         $this->name = $role->name;
-        // Decode JSON permissions
-        $this->selectedPermissions = json_decode($role->permissions, true) ?? [];
+        
+        // Handle JSON/Array Permissions safely
+        if (is_array($role->permissions)) {
+            $this->selectedPermissions = $role->permissions;
+        } else {
+            $this->selectedPermissions = json_decode($role->permissions, true) ?? [];
+        }
         
         $this->modalMode = 'edit';
         $this->showModal = true;
     }
 
-    // --- SECURITY LAYER: DOUBLE PASSWORD (PIN) ---
+    // --- SECURITY LAYER ---
 
     public function initiateSave()
     {
         $this->validate([
-            'name' => 'required|min:3|unique:roles,name,' . $this->roleId
+            'name' => [
+                'required',
+                'min:3',
+                Rule::unique('roles', 'name')->ignore($this->roleId)
+            ]
         ]);
 
-        // Cek apakah user punya PIN. Jika tidak, minta buat dulu atau gunakan password login (opsional)
-        // Disini kita asumsikan untuk aksi sensitif di Role Manager, butuh konfirmasi PIN
         $this->pendingAction = 'save';
         $this->showPinModal = true;
         $this->security_pin_input = '';
@@ -127,16 +115,11 @@ public function mount()
     {
         $user = auth()->user();
 
-        // Skenario: Menggunakan Password Login sebagai "Double Auth" jika PIN belum diset
-        // Atau Anda bisa cek kolom 'security_pin' jika sudah dibuat fiturnya.
-        // Di sini saya gunakan Password Login sebagai verifikasi keamanan tambahan.
-        
         if (!Hash::check($this->security_pin_input, $user->password)) {
             $this->addError('security_pin_input', 'Password salah. Akses ditolak.');
             return;
         }
 
-        // Jika lolos verifikasi, jalankan aksi
         if ($this->pendingAction === 'save') {
             $this->executeSave();
         } elseif ($this->pendingAction === 'delete') {
@@ -151,9 +134,12 @@ public function mount()
 
     private function executeSave()
     {
+        $perms = $this->selectedPermissions ?? [];
+
         $data = [
             'name' => $this->name,
-            'permissions' => json_encode($this->selectedPermissions), // Simpan sebagai JSON
+            'slug' => Str::slug($this->name), // [FIX] Generate Slug Otomatis
+            'permissions' => $perms,
             'tenant_id' => auth()->user()->tenant_id
         ];
 
@@ -172,14 +158,15 @@ public function mount()
     {
         $role = Role::findOrFail($this->pendingId);
         
-        // Prevent deleting admin role or role with users
-        if (in_array(strtolower($role->name), ['admin', 'super_admin'])) {
+        if (in_array(strtolower($role->name), ['admin', 'super admin', 'super_admin'])) {
             session()->flash('error', 'Role Admin Utama tidak bisa dihapus!');
+            $this->closeModal();
             return;
         }
         
         if ($role->users()->count() > 0) {
             session()->flash('error', 'Role ini masih digunakan oleh karyawan. Pindahkan mereka dulu.');
+            $this->closeModal();
             return;
         }
 
@@ -190,11 +177,12 @@ public function mount()
     public function closeModal()
     {
         $this->showModal = false;
+        $this->showPinModal = false;
         $this->resetForm();
     }
 
     private function resetForm()
     {
-        $this->reset(['name', 'selectedPermissions', 'roleId']);
+        $this->reset(['name', 'selectedPermissions', 'roleId', 'security_pin_input', 'pendingAction', 'pendingId']);
     }
 }

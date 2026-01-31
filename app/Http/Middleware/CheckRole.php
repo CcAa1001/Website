@@ -12,7 +12,6 @@ class CheckRole
      * Handle an incoming request.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     * @param  string  ...$roles
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
@@ -21,18 +20,26 @@ class CheckRole
         }
 
         $user = auth()->user();
+        
+        // Ambil data role user
+        $userRoleName = strtolower($user->role->name ?? '');
+        $userRoleSlug = strtolower($user->role->slug ?? '');
 
-        // Super admin has access to everything
-        if ($user->role && strtolower($user->role->name) === 'admin') {
+        // Normalisasi daftar role yang diizinkan (dari parameter route)
+        $allowedRoles = array_map('strtolower', $roles);
+
+        // 1. Cek Super Admin (Bypass segalanya)
+        if ($userRoleName === 'super admin' || $userRoleSlug === 'super_admin' || $userRoleName === 'admin') {
             return $next($request);
         }
 
-        // Check if user has required role
-        if ($user->role && in_array(strtolower($user->role->name), array_map('strtolower', $roles))) {
+        // 2. Cek Role Spesifik (Cek Name ATAU Slug)
+        // Jika salah satu cocok, izinkan akses
+        if (in_array($userRoleName, $allowedRoles) || in_array($userRoleSlug, $allowedRoles)) {
             return $next($request);
         }
 
-        // Access denied
+        // Jika gagal, tampilkan error
         abort(403, 'Unauthorized access. Required role: ' . implode(', ', $roles));
     }
 }

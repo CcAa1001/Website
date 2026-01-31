@@ -112,8 +112,7 @@ class InventoryManager extends Component
         return view('livewire.inventory-manager', [
             'products' => $products, // <-- Diubah dari 'items' menjadi 'products'
             'categories' => $categories
-        ])
-        ->layout('layouts.app', ['activePage' => 'inventory']); 
+        ])->layout('layouts.app', ['titlePage' => 'inventory']); 
     }
 
     // ==================== ACTIONS ====================
