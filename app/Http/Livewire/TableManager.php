@@ -12,114 +12,126 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class TableManager extends Component
 {
-    // Properties
+    // Properties Table
     public $tableId;
     public $outlet_id;
     public $table_area_id;
     public $table_number;
     public $capacity = 4;
     public $qr_code;
-    public $table_sort_order = 0;
     public $is_table_active = true;
     public $isEditingTable = false;
-
-    // Area Properties
-    public $areaId;
-    public $areaName;
-    public $area_sort_order = 0;
-    public $is_area_active = true;
-    public $isEditingArea = false;
 
     // UI State
     public $selectedOutlet;
     public $selectedArea;
     public $showQRModal = false;
     public $viewingTable = null; 
-    public $qrCodeUrl;           
-    public $qrCodeValue;         
-    public $generatedQrSvg;      
+    public $qrCodeUrl;          
+    public $generatedQrSvg;       
+
+    // Listeners (Optional in V3 but kept for compatibility)
+    protected $listeners = ['refreshComponent' => '$refresh'];
 
     protected function rules() {
         return [
             'outlet_id' => 'required|exists:outlets,id',
-            'table_number' => ['required', 'max:20', Rule::unique('tables')->where('outlet_id', $this->outlet_id)->ignore($this->tableId)],
-            'qr_code' => ['nullable', 'string', 'max:255', Rule::unique('tables', 'qr_code')->ignore($this->tableId)],
+            'table_number' => [
+                'required', 
+                'max:20', 
+                Rule::unique('tables')
+                    ->where('outlet_id', $this->outlet_id)
+                    ->whereNull('deleted_at') // Handle soft deletes
+                    ->ignore($this->tableId)
+            ],
+            'qr_code' => [
+                'nullable', 
+                'string', 
+                'max:255', 
+                Rule::unique('tables', 'qr_code')
+                    ->whereNull('deleted_at')
+                    ->ignore($this->tableId)
+            ],
             'capacity' => 'required|integer|min:1',
+            'table_area_id' => 'nullable|exists:table_areas,id',
         ];
     }
 
-    protected $areaRules = [
-        'outlet_id' => 'required|exists:outlets,id',
-        'areaName' => 'required|min:2|max:100',
-    ];
-
     public function mount() {
         $user = auth()->user();
+        // Set default outlet
         $this->selectedOutlet = $user->outlet_id ?? Outlet::where('tenant_id', $user->tenant_id)->first()?->id;
         $this->outlet_id = $this->selectedOutlet;
     }
 
     public function render() {
         $user = auth()->user();
+        
         $outlets = Outlet::where('tenant_id', $user->tenant_id)->orderBy('name')->get();
+        
         $tables = collect();
         $areas = collect();
 
         if ($this->selectedOutlet) {
-            $query = Table::where('outlet_id', $this->selectedOutlet)->with('tableArea');
-            if ($this->selectedArea) $query->where('table_area_id', $this->selectedArea);
+            $areas = TableArea::where('outlet_id', $this->selectedOutlet)
+                              ->orderBy('name')
+                              ->get();
+
+            $query = Table::where('outlet_id', $this->selectedOutlet)
+                          ->with('tableArea');
+            
+            if ($this->selectedArea) {
+                $query->where('table_area_id', $this->selectedArea);
+            }
+            
             $tables = $query->orderBy('table_area_id')->orderBy('table_number')->get();
-            $areas = TableArea::where('outlet_id', $this->selectedOutlet)->withCount('tables')->orderBy('name')->get();
         }
 
         return view('livewire.table-manager', compact('outlets', 'tables', 'areas'))
             ->layout('layouts.app', ['activePage' => 'tables', 'titlePage' => 'Manajemen Meja']);
     }
 
-    // [FIX] LOGIC QR CODE (Arahkan ke Route Login Meja)
-    public function showQR($id)
+    // --- CREATE & UPDATE ---
+
+    public function create()
     {
-        $table = Table::with('tableArea')->findOrFail($id);
-        $this->viewingTable = $table;
+        $this->resetTableForm();
+        $this->isEditingTable = false;
+        $this->outlet_id = $this->selectedOutlet; // Pastikan outlet terpilih
         
-        // Gunakan QR Code custom jika ada, atau ID jika kosong
-        $code = $table->qr_code ?: $table->id;
-        
-        // URL mengarah ke route 'table.login' yang kita buat di web.php
-        $fullUrl = route('table.login', ['code' => $code]);
-        
-        $this->qrCodeUrl = $fullUrl;
-        $this->qrCodeValue = $code;
-
-        // Generate QR Code Size Besar (500px) agar tajam saat diprint/zoom
-        if (class_exists('SimpleSoftwareIO\QrCode\Facades\QrCode')) {
-            $this->generatedQrSvg = QrCode::size(500)
-                ->color(0, 0, 0)
-                ->backgroundColor(255, 255, 255)
-                ->margin(1)
-                ->generate($fullUrl);
-        } else {
-            $this->generatedQrSvg = 'Library Error';
-        }
-
-        $this->showQRModal = true;
+        // [FIXED] Ganti dispatchBrowserEvent menjadi dispatch
+        $this->dispatch('open-modal-form'); 
     }
 
-    public function regenerateQR($id) {
+    public function edit($id) {
         $table = Table::findOrFail($id);
-        $table->update(['qr_code' => Str::random(10)]); 
-        if ($this->viewingTable && $this->viewingTable->id == $id) $this->showQR($id);
-        session()->flash('message', 'QR Code di-reset!');
+        $this->tableId = $id;
+        $this->outlet_id = $table->outlet_id;
+        $this->table_number = $table->table_number;
+        $this->table_area_id = $table->table_area_id;
+        $this->capacity = $table->capacity;
+        $this->qr_code = $table->qr_code;
+        $this->is_table_active = $table->is_active;
+        
+        $this->isEditingTable = true;
+        
+        // [FIXED] Ganti dispatchBrowserEvent menjadi dispatch
+        $this->dispatch('open-modal-form'); 
     }
 
-    // [FIX] SAVE TABLE (Tambahkan Tenant ID)
     public function saveTable() {
         $this->validate();
 
+        // Auto Generate QR Code jika kosong
+        if (empty($this->qr_code)) {
+            $outletCode = Outlet::find($this->outlet_id)->code ?? 'OUT';
+            $this->qr_code = 'QR-' . $outletCode . '-' . str_replace(' ', '', $this->table_number) . '-' . Str::random(4);
+        }
+
         $data = [
+            'tenant_id' => auth()->user()->tenant_id, // Penting!
             'outlet_id' => $this->outlet_id,
-            'tenant_id' => auth()->user()->tenant_id, // [FIX] Wajib ada agar tidak error SQL
-            'table_area_id' => $this->table_area_id,
+            'table_area_id' => $this->table_area_id ?: null,
             'table_number' => $this->table_number,
             'capacity' => $this->capacity,
             'qr_code' => $this->qr_code, 
@@ -129,58 +141,59 @@ class TableManager extends Component
 
         if ($this->tableId) {
             Table::findOrFail($this->tableId)->update($data);
-            session()->flash('message', 'Meja diperbarui!');
+            session()->flash('message', 'Meja berhasil diperbarui!');
         } else {
             Table::create($data);
-            session()->flash('message', 'Meja ditambahkan!');
+            session()->flash('message', 'Meja baru berhasil ditambahkan!');
         }
         
-        $this->dispatch('close-modal');
+        // [FIXED] Ganti dispatchBrowserEvent menjadi dispatch
+        $this->dispatch('close-modal-form'); 
         $this->resetTableForm();
     }
 
-    // CRUD Methods Lainnya
-    public function edit($id) {
-        $table = Table::findOrFail($id);
-        $this->tableId = $id;
-        $this->table_number = $table->table_number;
-        $this->table_area_id = $table->table_area_id;
-        $this->capacity = $table->capacity;
-        $this->qr_code = $table->qr_code;
-        $this->isEditingTable = true;
-        $this->dispatch('open-modal');
-    }
-    
-    public function updateTable() { $this->saveTable(); }
-    
+    // --- DELETE ---
+
     public function deleteTable($id) {
-        Table::destroy($id);
-        session()->flash('message', 'Meja dihapus.');
+        $table = Table::find($id);
+        if ($table) {
+            $table->delete();
+            session()->flash('message', 'Meja berhasil dihapus.');
+        }
     }
-    
-    public function cancelTableEdit() { $this->resetTableForm(); }
-    private function resetTableForm() { $this->reset(['tableId', 'table_area_id', 'table_number', 'capacity', 'qr_code', 'isEditingTable']); }
-    
-    // Area Methods
-    public function saveArea() {
-        $this->validate($this->areaRules);
-        $data = ['outlet_id'=>$this->outlet_id, 'name'=>$this->areaName, 'tenant_id'=>auth()->user()->tenant_id];
-        if ($this->areaId) TableArea::findOrFail($this->areaId)->update($data);
-        else TableArea::create($data);
-        $this->resetAreaForm();
+
+    // --- QR CODE VIEWER ---
+
+    public function showQR($id)
+    {
+        $table = Table::with('tableArea')->findOrFail($id);
+        $this->viewingTable = $table;
+        
+        $code = $table->qr_code ?: $table->id;
+        // PENTING: Gunakan route name yang sudah kita perbaiki
+        $fullUrl = route('table.login', ['code' => $code]);
+        
+        $this->qrCodeUrl = $fullUrl;
+
+        // Generate SVG untuk preview tajam
+        if (class_exists('SimpleSoftwareIO\QrCode\Facades\QrCode')) {
+            $this->generatedQrSvg = QrCode::size(300)
+                ->margin(2)
+                ->generate($fullUrl);
+        }
+
+        $this->showQRModal = true;
     }
-    public function editArea($id) {
-        $a = TableArea::findOrFail($id);
-        $this->areaId = $a->id; $this->areaName = $a->name; $this->isEditingArea = true;
+
+    // --- HELPERS ---
+
+    public function updatedSelectedOutlet($val) {
+        $this->outlet_id = $val;
+        $this->selectedArea = null;
     }
-    public function deleteArea($id) {
-        $a = TableArea::findOrFail($id);
-        if($a->tables()->count()>0) return session()->flash('error','Area masih punya meja.');
-        $a->delete();
+
+    private function resetTableForm() { 
+        $this->reset(['tableId', 'table_area_id', 'table_number', 'capacity', 'qr_code', 'isEditingTable']); 
+        $this->is_table_active = true;
     }
-    public function cancelAreaEdit() { $this->resetAreaForm(); }
-    private function resetAreaForm() { $this->reset(['areaId', 'areaName', 'isEditingArea']); }
-    public function updatedSelectedOutlet($v) { $this->outlet_id = $v; $this->selectedArea = null; }
-    public function getTableFormTitleProperty() { return $this->isEditingTable ? 'Edit Meja' : 'Tambah Meja'; }
-    public function getAreaFormTitleProperty() { return $this->isEditingArea ? 'Edit Area' : 'Tambah Area'; }
 }

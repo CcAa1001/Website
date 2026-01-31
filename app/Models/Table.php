@@ -14,13 +14,14 @@ class Table extends Model
     use HasUuids, SoftDeletes;
 
     protected $fillable = [
+        'tenant_id',      // [FIX] WAJIB DITAMBAHKAN AGAR BISA SAVE
         'outlet_id',
         'table_area_id',
         'table_number',
         'capacity',
         'status',
         'current_order_id',
-        'qr_code', // Wajib ada untuk menyimpan kode
+        'qr_code',
         'sort_order',
         'is_active',
     ];
@@ -43,7 +44,7 @@ class Table extends Model
         return $this->belongsTo(TableArea::class, 'table_area_id');
     }
 
-    // Alias 'area' agar kompatibel dengan kode yang memanggil $table->area
+    // Alias 'area' 
     public function area()
     {
         return $this->tableArea();
@@ -120,42 +121,5 @@ class Table extends Model
         $this->update(['status' => 'occupied']);
 
         return $session;
-    }
-
-    /**
-     * [IMPROVED] Generate Smart QR Code URL
-     * Membedakan antara Link Eksternal (Google) dan Internal (Menu).
-     */
-    public function getQrUrlAttribute(): string
-    {
-        // 1. Jika kode adalah URL valid (https://...), return langsung
-        if (filter_var($this->qr_code, FILTER_VALIDATE_URL)) {
-            return $this->qr_code;
-        }
-
-        // 2. Jika kode biasa (MEJA-01), return route scan internal
-        return route('table.scan', ['qr_code' => $this->qr_code]);
-    }
-
-    public function getStatusColorAttribute(): string
-    {
-        return match($this->status) {
-            'available' => 'success',
-            'occupied' => 'warning',
-            'reserved' => 'info',
-            'cleaning' => 'secondary',
-            default => 'dark',
-        };
-    }
-
-    public function getStatusLabelAttribute(): string
-    {
-        return match($this->status) {
-            'available' => 'Tersedia',
-            'occupied' => 'Terisi',
-            'reserved' => 'Dipesan',
-            'cleaning' => 'Dibersihkan',
-            default => $this->status,
-        };
     }
 }

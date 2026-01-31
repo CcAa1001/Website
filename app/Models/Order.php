@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Order extends Model
@@ -109,6 +110,13 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
 
+    // [FIX] Relasi Singular untuk menghindari error "RelationNotFoundException"
+    // Mengambil pembayaran terakhir/terbaru
+    public function payment(): HasOne
+    {
+        return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
     public function refunds(): HasMany
     {
         return $this->hasMany(Refund::class);
@@ -183,7 +191,8 @@ class Order extends Model
             'served' => 'Disajikan',
             'completed' => 'Selesai',
             'cancelled' => 'Dibatalkan',
-            default => $this->status,
+            'refunded' => 'Dikembalikan',
+            default => ucfirst($this->status),
         };
     }
 
@@ -199,8 +208,27 @@ class Order extends Model
             'ready' => 'success',
             'served' => 'secondary',
             'completed' => 'success',
-            'cancelled' => 'danger',
+            'cancelled', 'refunded' => 'danger',
             default => 'secondary',
         };
+    }
+
+    /**
+     * [FIX] Helper untuk mengambil Payment Method Name
+     * Digunakan di View: $order->payment_method
+     */
+    public function getPaymentMethodAttribute()
+    {
+        // Cek relasi payment (singular)
+        if ($this->relationLoaded('payment') && $this->payment) {
+            return $this->payment->payment_method ?? 'Cash';
+        }
+        
+        // Cek relasi payments (plural)
+        if ($this->relationLoaded('payments') && $this->payments->isNotEmpty()) {
+            return $this->payments->last()->payment_method ?? 'Cash';
+        }
+
+        return 'Cash';
     }
 }

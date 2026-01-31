@@ -5,261 +5,120 @@ namespace App\Http\Livewire;
 use Livewire\Component;
 use Livewire\WithPagination;
 use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Table;
 use App\Models\TableSession;
-use App\Models\Outlet;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class OrderManager extends Component
 {
     use WithPagination;
 
-    // Filters
-    public $filterStatus = 'all';
-    public $filterTable = '';
-    public $filterOutlet = '';
-    public $filterOrderSource = 'all';
-    public $filterDate = '';
+    // Filter & Search
+    public $statusFilter = 'active'; // active, completed
     public $search = '';
-
-    // UI State
-    public $selectedOrderId;
-    public $showOrderDetail = false;
-    public $viewMode = 'grid'; // 'grid' or 'list'
-
-    // Real-time polling
     public $autoRefresh = true;
 
-    protected $paginationTheme = 'bootstrap';
+    // Sidebar Control
+    public $selectedOrder = null;
+    public $isSidebarOpen = false;
 
-    protected $queryString = [
-        'filterStatus' => ['except' => 'all'],
-        'filterTable' => ['except' => ''],
-        'search' => ['except' => ''],
-    ];
+    protected $listeners = ['refreshOrders' => '$refresh'];
+    protected $paginationTheme = 'bootstrap';
 
     public function mount()
     {
-        $this->filterDate = today()->toDateString();
+        if (!auth()->check()) {
+            return redirect()->route('login');
+        }
+    }
+
+    // --- ACTIONS ---
+
+    // 1. Pilih Order (Buka Sidebar)
+    public function selectOrder($orderId)
+    {
+        $this->selectedOrder = Order::with(['items', 'table', 'outlet', 'user'])
+            ->find($orderId);
+        
+        $this->isSidebarOpen = true;
+    }
+
+    // 2. Tutup Sidebar
+    public function closeSidebar()
+    {
+        $this->isSidebarOpen = false;
+        // Delay reset agar animasi tutup selesai dulu (opsional, di sini reset langsung)
+        // $this->selectedOrder = null; 
+    }
+
+    // 3. Update Status Order
+    public function updateOrderStatus($orderId, $status)
+    {
+        $order = Order::find($orderId);
+        if(!$order) return;
+
+        $updateData = ['status' => $status];
+        
+        // Timestamp logic
+        if ($status == 'confirmed') $updateData['confirmed_at'] = now();
+        if ($status == 'preparing') $updateData['prepared_at'] = now();
+        if ($status == 'ready') $updateData['prepared_at'] = $order->prepared_at ?? now(); // Dapur selesai
+        if ($status == 'served') $updateData['served_at'] = now();
+        if ($status == 'completed') {
+            $updateData['completed_at'] = now();
+            $updateData['payment_status'] = 'paid';
+        }
+        if ($status == 'cancelled') {
+            $updateData['cancelled_at'] = now();
+        }
+
+        $order->update($updateData);
+
+        // Jika order yang diupdate sedang dibuka di sidebar, refresh datanya
+        if ($this->selectedOrder && $this->selectedOrder->id == $orderId) {
+            $this->selectedOrder = $order->fresh(['items', 'table']);
+        }
+
+        session()->flash('message', "Order #{$order->order_number} status: " . ucfirst($status));
     }
 
     public function render()
     {
         $user = auth()->user();
 
-        // Build query
         $query = Order::where('tenant_id', $user->tenant_id)
-            ->with(['table', 'items', 'tableSession', 'outlet']);
+            ->with(['table', 'items']);
 
-        // Apply filters
-        if ($this->filterStatus !== 'all') {
-            $query->where('status', $this->filterStatus);
+        // Filter Status Logic
+        if ($this->statusFilter === 'active') {
+            // Tampilkan order yang belum selesai/batal
+            $query->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready', 'served']);
+        } elseif ($this->statusFilter === 'completed') {
+            $query->whereIn('status', ['completed', 'cancelled', 'refunded']);
         }
 
-        if ($this->filterTable) {
-            $query->where('table_id', $this->filterTable);
-        }
-
-        if ($this->filterOutlet) {
-            $query->where('outlet_id', $this->filterOutlet);
-        }
-
-        if ($this->filterOrderSource !== 'all') {
-            $query->where('order_source', $this->filterOrderSource);
-        }
-
-        if ($this->filterDate) {
-            $query->whereDate('created_at', $this->filterDate);
-        }
-
+        // Search Logic
         if ($this->search) {
             $query->where(function($q) {
-                $q->where('order_number', 'like', '%' . $this->search . '%')
-                  ->orWhere('customer_name', 'like', '%' . $this->search . '%');
+                $q->where('order_number', 'like', '%'.$this->search.'%')
+                  ->orWhere('customer_name', 'like', '%'.$this->search.'%');
             });
         }
 
-        $orders = $query->latest('created_at')
-            ->paginate(12);
-
-        // Get filter options
-        $tables = Table::where('outlet_id', $user->outlet_id)
-            ->orderBy('table_number')
-            ->get();
-
-        $outlets = Outlet::where('tenant_id', $user->tenant_id)
-            ->where('is_active', true)
-            ->get();
-
-        // Get selected order details
-        $selectedOrder = null;
-        if ($this->selectedOrderId) {
-            $selectedOrder = Order::with(['table', 'items.product', 'tableSession', 'outlet'])
-                ->find($this->selectedOrderId);
-        }
-
-        // Statistics
+        // Stats Counter
         $stats = [
-            'total_today' => Order::where('tenant_id', $user->tenant_id)
-                ->whereDate('created_at', today())
-                ->count(),
-            'pending' => Order::where('tenant_id', $user->tenant_id)
-                ->where('status', 'pending')
-                ->count(),
-            'preparing' => Order::where('tenant_id', $user->tenant_id)
-                ->whereIn('status', ['confirmed', 'preparing'])
-                ->count(),
-            'completed_today' => Order::where('tenant_id', $user->tenant_id)
-                ->whereDate('created_at', today())
-                ->where('status', 'completed')
-                ->count(),
-            'revenue_today' => Order::where('tenant_id', $user->tenant_id)
-                ->whereDate('created_at', today())
-                ->whereIn('status', ['completed', 'served'])
-                ->sum('grand_total'),
+            'pending' => Order::where('tenant_id', $user->tenant_id)->where('status', 'pending')->count(),
+            'kitchen' => Order::where('tenant_id', $user->tenant_id)->whereIn('status', ['confirmed', 'preparing'])->count(),
+            'ready'   => Order::where('tenant_id', $user->tenant_id)->where('status', 'ready')->count(),
         ];
+
+        // Sorting: Order lama di atas (FIFO) untuk Active, Order baru di atas untuk History
+        $sortDirection = $this->statusFilter === 'active' ? 'asc' : 'desc';
 
         return view('livewire.order-manager', [
-            'orders' => $orders,
-            'tables' => $tables,
-            'outlets' => $outlets,
-            'selectedOrder' => $selectedOrder,
-            'stats' => $stats,
-        ]);
-    }
-
-    public function viewOrder($orderId)
-    {
-        $this->selectedOrderId = $orderId;
-        $this->showOrderDetail = true;
-    }
-
-    public function closeOrderDetail()
-    {
-        $this->showOrderDetail = false;
-        $this->selectedOrderId = null;
-    }
-
-    public function updateOrderStatus($orderId, $newStatus)
-    {
-        $order = Order::where('id', $orderId)
-            ->where('tenant_id', auth()->user()->tenant_id)
-            ->firstOrFail();
-
-        $validTransitions = [
-            'pending' => ['confirmed', 'cancelled'],
-            'confirmed' => ['preparing', 'cancelled'],
-            'preparing' => ['ready', 'cancelled'],
-            'ready' => ['served'],
-            'served' => ['completed'],
-        ];
-
-        if (!isset($validTransitions[$order->status]) || 
-            !in_array($newStatus, $validTransitions[$order->status])) {
-            session()->flash('error', 'Invalid status transition');
-            return;
-        }
-
-        $updates = ['status' => $newStatus];
-
-        switch ($newStatus) {
-            case 'confirmed':
-                $updates['confirmed_at'] = now();
-                break;
-            case 'preparing':
-                $updates['confirmed_at'] = $updates['confirmed_at'] ?? now();
-                break;
-            case 'ready':
-                $updates['prepared_at'] = now();
-                break;
-            case 'served':
-                $updates['prepared_at'] = $updates['prepared_at'] ?? now();
-                break;
-            case 'completed':
-                $updates['completed_at'] = now();
-                $updates['payment_status'] = 'paid';
-                // Close table session if exists
-                if ($order->table_session_id) {
-                    $session = TableSession::find($order->table_session_id);
-                    if ($session && $session->isActive()) {
-                        $session->close(auth()->id());
-                    }
-                }
-                break;
-            case 'cancelled':
-                $updates['cancelled_at'] = now();
-                $updates['cancellation_reason'] = 'Cancelled by staff';
-                break;
-        }
-
-        $order->update($updates);
-
-        session()->flash('message', 'Order status updated successfully!');
-    }
-
-    public function updateItemStatus($itemId, $newStatus)
-    {
-        $item = OrderItem::findOrFail($itemId);
-
-        $validStatuses = ['pending', 'preparing', 'ready', 'served'];
-        if (!in_array($newStatus, $validStatuses)) {
-            return;
-        }
-
-        $updates = ['kitchen_status' => $newStatus];
-
-        switch ($newStatus) {
-            case 'preparing':
-                $updates['kitchen_printed_at'] = $updates['kitchen_printed_at'] ?? now();
-                break;
-            case 'ready':
-                $updates['prepared_at'] = now();
-                break;
-            case 'served':
-                $updates['served_at'] = now();
-                break;
-        }
-
-        $item->update($updates);
-
-        // Auto-update order status based on items
-        $order = $item->order;
-        $allItemsReady = $order->items()->where('kitchen_status', '!=', 'ready')->count() === 0;
-        if ($allItemsReady && $order->status === 'preparing') {
-            $this->updateOrderStatus($order->id, 'ready');
-        }
-
-        session()->flash('message', 'Item status updated!');
-    }
-
-    public function markAllItemsReady($orderId)
-    {
-        $order = Order::findOrFail($orderId);
-        $order->items()->update([
-            'kitchen_status' => 'ready',
-            'prepared_at' => now(),
-        ]);
-        
-        $this->updateOrderStatus($orderId, 'ready');
-    }
-
-    public function clearFilters()
-    {
-        $this->reset(['filterStatus', 'filterTable', 'filterOutlet', 'filterOrderSource', 'search']);
-        $this->filterDate = today()->toDateString();
-        $this->resetPage();
-    }
-
-    public function toggleAutoRefresh()
-    {
-        $this->autoRefresh = !$this->autoRefresh;
-    }
-
-    public function printOrder($orderId)
-    {
-        // TODO: Implement print functionality
-        session()->flash('message', 'Print order #' . $orderId);
+            'orders' => $query->orderBy('created_at', $sortDirection)->paginate(10),
+            'stats' => $stats
+        ])->layout('layouts.app', ['activePage' => 'orders', 'titlePage' => 'Pesanan Aktif']);
     }
 
     public function getStatusBadgeColor($status)
@@ -270,23 +129,9 @@ class OrderManager extends Component
             'preparing' => 'primary',
             'ready' => 'success',
             'served' => 'secondary',
-            'completed' => 'success',
+            'completed' => 'dark',
             'cancelled' => 'danger',
             default => 'secondary',
-        };
-    }
-
-    public function getStatusLabel($status)
-    {
-        return match($status) {
-            'pending' => 'Menunggu',
-            'confirmed' => 'Dikonfirmasi',
-            'preparing' => 'Diproses',
-            'ready' => 'Siap',
-            'served' => 'Disajikan',
-            'completed' => 'Selesai',
-            'cancelled' => 'Dibatalkan',
-            default => ucfirst($status),
         };
     }
 }

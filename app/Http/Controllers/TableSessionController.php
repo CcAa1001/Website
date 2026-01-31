@@ -15,30 +15,45 @@ class TableSessionController extends Controller
 
     /**
      * Handle QR code scan
-     * GET /table/{qr_code}
+     * GET /table/{code}
      */
-    public function scan(Request $request, string $qrCode)
+    public function scan(Request $request, string $code)
     {
-        // Find table by QR code
-        $table = Table::with(['outlet.tenant', 'tableArea'])
-                      ->byQrCode($qrCode)
-                      ->active()
-                      ->first();
+        // 1. Logika Pencarian yang Valid (Support UUID & QR Biasa)
+        $isUuid = preg_match('/^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i', $code);
 
+        // Mulai query dengan eager loading
+        $query = Table::with(['outlet.tenant', 'tableArea'])->active();
+
+        if ($isUuid) {
+            // Jika format UUID, cari berdasarkan ID atau QR Code
+            $query->where(function($q) use ($code) {
+                $q->where('id', $code)
+                  ->orWhere('qr_code', $code);
+            });
+        } else {
+            // Jika format biasa, cari berdasarkan scope QR Code
+            // Pastikan scope 'byQrCode' ada di Model Table, atau gunakan ->where('qr_code', $code)
+            $query->where('qr_code', $code);
+        }
+
+        $table = $query->first();
+
+        // 2. Validasi Jika Meja Tidak Ditemukan
         if (!$table) {
             return view('public.invalid', [
                 'message' => 'QR Code tidak valid atau meja tidak aktif.'
             ]);
         }
 
-        // Check if outlet is active
+        // 3. Check if outlet is active
         if (!$table->outlet || !$table->outlet->is_active) {
             return view('public.invalid', [
                 'message' => 'Outlet sedang tidak beroperasi.'
             ]);
         }
 
-        // Get device fingerprint (simplified - you can use FingerprintJS for better accuracy)
+        // Get device fingerprint
         $fingerprint = $this->getDeviceFingerprint($request);
 
         // Check for existing session token in cookie
@@ -53,28 +68,23 @@ class TableSessionController extends Controller
                 return redirect()->route('table.menu')
                     ->with('session_resumed', true);
             }
-            
-            // If session is for different table, check if we should switch
-            if ($existingSession && $existingSession->table_id !== $table->id) {
-                // You might want to handle this case - for now, we'll create new session
-                // and let the old one expire naturally
-            }
         }
 
-        // Get or create session for this table
+        // 4. Get or create session for this table (PENTING: Ini membuat Token)
         $session = $table->getOrCreateSession($fingerprint);
 
-        // Store session token in cookie
+        // 5. Simpan Token ke dalam Cookie Browser
         $cookie = Cookie::make(
             self::SESSION_COOKIE,
             $session->session_token,
             self::SESSION_COOKIE_MINUTES,
             '/',
             null,
-            false, // secure - set to true in production with HTTPS
-            true   // httpOnly
+            false, 
+            true
         );
 
+        // 6. Redirect ke Menu dengan membawa Cookie
         return redirect()->route('table.menu')
             ->withCookie($cookie)
             ->with('session_started', true);
@@ -86,11 +96,12 @@ class TableSessionController extends Controller
      */
     public function menu(Request $request)
     {
+        // Fungsi ini mencari Cookie yang dibuat oleh fungsi scan() di atas
         $session = $this->getActiveSession($request);
 
         if (!$session) {
              return view('public.invalid', [
-            'message' => 'Silakan scan QR code di meja Anda untuk mulai memesan.'
+            'message' => 'Sesi tidak valid. Silakan scan QR code di meja Anda untuk mulai memesan.'
         ]);
         }
 
