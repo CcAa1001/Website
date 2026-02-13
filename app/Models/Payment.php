@@ -26,6 +26,9 @@ class Payment extends Model
         'cash_received',
         'cash_change',
         'paid_at',
+        'gateway',
+        'payment_url',
+        'payment_expired_at',
     ];
 
     protected $casts = [

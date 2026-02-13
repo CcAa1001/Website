@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 
-class ProductManager extends Component
+class InventoryManager extends Component
 {
     use WithFileUploads, WithPagination;
 

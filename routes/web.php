@@ -28,6 +28,16 @@ use App\Http\Livewire\OrderManager;
 use App\Http\Livewire\KitchenDisplay;
 use App\Http\Livewire\TransactionHistory;
 use App\Http\Livewire\RefundHistory;
+
+// ==========================================
+// PAYMENT WEBHOOKS
+// ==========================================
+// Payment webhook routes (exclude from CSRF)
+use App\Http\Controllers\PaymentWebhookController;
+use App\Http\Controllers\PaymentRedirectController;
+
+
+    
 // ==========================================
 // FRONTEND PUBLIC LIVEWIRE (if exists)
 // ==========================================
@@ -169,24 +179,22 @@ Route::prefix('checkout')->name('checkout.')->group(function () {
     })->name('process');
 });
 
-// Customer Account
-Route::middleware(['auth'])->prefix('account')->name('account.')->group(function () {
-    Route::get('/dashboard', function () {
-        return view('account.dashboard');
-    })->name('dashboard');
+// Payment redirect (shows countdown before going to Nusandana)
+Route::get('/payment/redirect', [PaymentRedirectController::class, 'redirect'])
+    ->name('payment.redirect');
+
+// Payment webhook callback (Nusandana calls this)
+Route::post('/webhook/nusandana/payment', [PaymentWebhookController::class, 'nusandanaCallback'])
+    ->name('webhook.nusandana.payment');
+
+// User returns after payment
+Route::get('/payment/return', [PaymentWebhookController::class, 'nusandanaReturn'])
+    ->name('payment.return');
+
+// Retry failed payment
+Route::get('/order/{order}/retry-payment', [PaymentRedirectController::class, 'retryPayment'])
+    ->name('order.retry-payment');
     
-    Route::get('/orders', function () {
-        return view('account.orders');
-    })->name('orders');
-    
-    Route::get('/profile', function () {
-        return view('account.profile');
-    })->name('profile');
-    
-    Route::get('/addresses', function () {
-        return view('account.addresses');
-    })->name('addresses');
-});
 
 /*
 |--------------------------------------------------------------------------
@@ -331,3 +339,99 @@ Route::get('/test-payment', function() {
     
     return $methods;
 })->middleware('auth');
+
+// routes/web.php
+Route::get('/my-ip', function() {
+    return response()->json([
+        'server_ip' => file_get_contents('https://api.ipify.org'),
+        'request_ip' => request()->ip(),
+        'server_addr' => $_SERVER['SERVER_ADDR'] ?? 'N/A',
+    ]);
+});
+
+// Add to your existing routes/web.php
+
+use App\Services\PaymentGateway\NusandanaGateway;
+
+Route::get('/test-nusandana', function() {
+    return view('test-nusandana');
+});
+
+Route::post('/test-nusandana/balance', function() {
+    try {
+        $gateway = new NusandanaGateway();
+        $result = $gateway->queryBalance();
+        return response()->json($result);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+});
+
+Route::post('/test-nusandana/payment', function(\Illuminate\Http\Request $request) {
+    try {
+        $gateway = new NusandanaGateway();
+        
+        $result = $gateway->createPayment([
+            'order_no' => 'WEB' . time(),
+            'amount' => $request->amount ?? 10000,
+            'payment_method' => $request->payment_method ?? 'qrcode',
+            'bank_code' => $request->bank_code,
+        ]);
+        
+        return response()->json($result);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+});
+
+// Test 3: Test payment redirect directly
+Route::get('/test-payment-redirect', function() {
+    $payment = App\Models\Payment::with(['order', 'paymentMethod'])->first();
+    
+    if (!$payment) {
+        return 'No payments in database. Create a test payment first.';
+    }
+    
+    if (!$payment->payment_url) {
+        return 'Payment exists but has no payment_url. Payment ID: ' . $payment->id;
+    }
+    
+    // Try to render the view
+    try {
+        return view('payment.redirect', [
+            'payment' => $payment,
+            'order' => $payment->order,
+            'paymentMethod' => $payment->paymentMethod,
+            'paymentUrl' => $payment->payment_url,
+        ]);
+    } catch (\Exception $e) {
+        return 'View error: ' . $e->getMessage();
+    }
+});
+
+// Test 4: Test the actual controller method
+Route::get('/test-controller-method', function() {
+    $payment = App\Models\Payment::with(['order', 'paymentMethod'])->first();
+    
+    if (!$payment) {
+        return 'No payments in database';
+    }
+    
+    try {
+        $controller = new App\Http\Controllers\PaymentRedirectController();
+        $request = new Illuminate\Http\Request([
+            'order_id' => $payment->order_id,
+            'payment_id' => $payment->id,
+        ]);
+        
+        return $controller->redirect($request);
+    } catch (\Exception $e) {
+        return 'Controller error: ' . $e->getMessage();
+    }
+});

@@ -187,36 +187,61 @@
 
                 {{-- Action Buttons --}}
                 @if($hasTableSession)
-                    {{-- TWO OPTIONS: Pay Now or Pay Later --}}
-                    <button 
-                        type="button"
-                        wire:click="proceedToPayment"
-                        wire:loading.attr="disabled"
-                        class="btn_pay_now"
-                    >
-                        <i class="fas fa-credit-card"></i>
-                        Bayar Sekarang
-                    </button>
-                    
-                    <button 
-                        type="button"
-                        onclick="submitOrderWithNotes()"
-                        wire:loading.attr="disabled"
-                        wire:loading.class="btn_loading"
-                        class="btn_submit_order"
-                        id="btnSubmitOrder"
-                    >
-                        <span wire:loading.remove wire:target="submitOrder">
-                            <i class="fas fa-paper-plane"></i>
-                            Pesan Dulu, Bayar Nanti
-                        </span>
-                        <span wire:loading wire:target="submitOrder">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            Mengirim...
-                        </span>
-                    </button>
+                    @if($hasPendingOrder)
+                        <div class="pending_order_alert">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Anda memiliki pesanan yang belum dibayar</span>
+                        </div>
+                        
+                        <button 
+                            type="button"
+                            wire:click="payPendingOrder"
+                            wire:loading.attr="disabled"
+                            class="btn_pay_now_pending"
+                        >
+                            <i class="fas fa-credit-card"></i>
+                            Bayar Pesanan Saya
+                        </button>
+                        
+                        <button 
+                            type="button"
+                            onclick="submitOrderWithNotes()"
+                            wire:loading.attr="disabled"
+                            class="btn_order_more"
+                        >
+                            <i class="fas fa-plus"></i>
+                            Pesan Lagi
+                        </button>
+                    @else
+                        <button 
+                            type="button"
+                            wire:click="proceedToPayment"
+                            wire:loading.attr="disabled"
+                            class="btn_pay_now"
+                        >
+                            <i class="fas fa-credit-card"></i>
+                            Bayar Sekarang
+                        </button>
+                        
+                        <button 
+                            type="button"
+                            onclick="submitOrderWithNotes()"
+                            wire:loading.attr="disabled"
+                            wire:loading.class="btn_loading"
+                            class="btn_submit_order"
+                            id="btnSubmitOrder"
+                        >
+                            <span wire:loading.remove wire:target="submitOrder">
+                                <i class="fas fa-paper-plane"></i>
+                                Pesan Dulu, Bayar Nanti
+                            </span>
+                            <span wire:loading wire:target="submitOrder">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                Mengirim...
+                            </span>
+                        </button>
+                    @endif
                 @else
-                    {{-- Regular checkout --}}
                     <a href="{{ route('checkout.index') ?? '#' }}" class="btn_checkout">
                         <span>Checkout</span>
                         <span class="checkout_total">{{ $this->formatPrice($grandTotal) }}</span>
@@ -226,10 +251,10 @@
         @endif
     </div>
 
-    {{-- Payment Modal (z-index: 2000 - Above cart sidebar) --}}
+    {{-- Payment Modal --}}
     @if($showPaymentModal)
     <div class="payment_modal_wrapper" wire:click="closePaymentModal">
-        <div class="payment_modal_content" wire:click.stop>
+        <div class="payment_modal_content" onclick="event.stopPropagation()">
             <div class="payment_modal_header">
                 <h3><i class="fas fa-credit-card"></i> Pilih Metode Pembayaran</h3>
                 <button type="button" wire:click="closePaymentModal" class="payment_close_btn">
@@ -238,7 +263,6 @@
             </div>
 
             <div class="payment_modal_body">
-                {{-- Customer Info (Optional) --}}
                 <div class="payment_form_group">
                     <label><i class="fas fa-user"></i> Nama (Opsional)</label>
                     <input type="text" wire:model="customerName" class="payment_input" placeholder="Masukkan nama Anda">
@@ -249,7 +273,6 @@
                     <input type="tel" wire:model="customerPhone" class="payment_input" placeholder="08xx xxxx xxxx">
                 </div>
 
-                {{-- Payment Methods --}}
                 <div class="payment_methods_section">
                     <label class="payment_section_label">
                         <i class="fas fa-wallet"></i> Metode Pembayaran <span class="required">*</span>
@@ -286,7 +309,6 @@
                     @endif
                 </div>
 
-                {{-- Order Summary --}}
                 <div class="payment_order_summary">
                     <h4><i class="fas fa-receipt"></i> Ringkasan Pesanan</h4>
                     <div class="payment_summary_items">
@@ -352,73 +374,169 @@
         <span id="orderErrorMessage"></span>
     </div>
 
-    {{-- Scripts --}}
+    {{-- Scripts - FIXED WITH 500MS DELAY --}}
     <script>
-        // Submit order with notes
+        console.log('Cart script loaded');
+
         function submitOrderWithNotes() {
             const notes = document.getElementById('orderNotes')?.value || null;
             @this.submitOrder(notes);
         }
 
-        // Confirm payment with notes
         function confirmPayment() {
             const notes = document.getElementById('orderNotes')?.value || null;
+            console.log('Confirming payment...');
             @this.submitOrderWithPayment(notes);
         }
 
-        // Show success modal
+        function payPendingOrderFromModal() {
+            closeSuccessModal();
+            @this.call('payPendingOrder');
+        }
+
+        // CRITICAL FIX: Add 500ms delay to ensure DB commit
+        function handlePaymentRedirect(url) {
+            console.log('=== REDIRECT CALLED ===');
+            console.log('URL:', url);
+            
+            if (!url) {
+                console.error('No URL provided!');
+                return;
+            }
+            
+            const toast = document.getElementById('orderErrorToast');
+            const messageEl = document.getElementById('orderErrorMessage');
+            if (toast && messageEl) {
+                messageEl.textContent = 'Mengarahkan ke halaman pembayaran...';
+                toast.style.display = 'flex';
+                toast.style.background = '#4CAF50';
+            }
+            
+            // IMPORTANT: 500ms delay ensures database commit completes
+            setTimeout(() => {
+                console.log('Redirecting now to:', url);
+                window.location.href = url;
+            }, 500);
+        }
+
         function showSuccessModal(data) {
             const modal = document.getElementById('orderSuccessModal');
             const title = document.getElementById('successTitle');
             const message = document.getElementById('successMessage');
             const display = document.getElementById('orderNumberDisplay');
-            
+
             if (modal && display) {
                 if (data.payment_method) {
                     title.textContent = 'Pembayaran Berhasil!';
                     message.textContent = 'Pesanan Anda sudah dibayar dengan ' + data.payment_method;
+                } else if (data.show_pay_now_button) {
+                    title.textContent = 'Pesanan Dikirim!';
+                    message.textContent = 'Pesanan telah diterima. Silakan lakukan pembayaran.';
+
+                    const modalContent = modal.querySelector('.order_success_content');
+                    const existingPayBtn = modalContent.querySelector('.btn_pay_now_modal');
+
+                    if (!existingPayBtn) {
+                        const payBtn = document.createElement('button');
+                        payBtn.className = 'btn_pay_now_modal';
+                        payBtn.innerHTML = '<i class="fas fa-credit-card"></i> Bayar Sekarang';
+                        payBtn.onclick = payPendingOrderFromModal;
+                        modalContent.insertBefore(payBtn, modalContent.querySelector('.btn_close_modal'));
+                    }
                 } else {
                     title.textContent = 'Pesanan Dikirim!';
                     message.textContent = 'Pesanan Anda sedang diproses di dapur';
                 }
-                
+
                 display.textContent = data.order_number;
                 modal.style.display = 'block';
             }
         }
 
-        // Close success modal
         function closeSuccessModal() {
             const modal = document.getElementById('orderSuccessModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
+            if (modal) modal.style.display = 'none';
         }
 
-        // Show error toast
         function showErrorToast(message) {
             const toast = document.getElementById('orderErrorToast');
             const messageEl = document.getElementById('orderErrorMessage');
             if (toast && messageEl) {
                 messageEl.textContent = message;
                 toast.style.display = 'flex';
-                setTimeout(() => {
-                    toast.style.display = 'none';
-                }, 4000);
+                toast.style.background = '#f44336';
+                setTimeout(() => toast.style.display = 'none', 4000);
             }
         }
 
-        // Listen for Livewire events
+        // Livewire v3 events
         document.addEventListener('livewire:init', () => {
+            console.log('Livewire initialized');
+            
+            Livewire.on('order-success', (event) => {
+                console.log('Order success:', event);
+                showSuccessModal(event);
+            });
+
+            Livewire.on('order-error', (event) => {
+                console.log('Order error:', event);
+                showErrorToast(event.message);
+            });
+
+            Livewire.on('payment-redirect', (event) => {
+                console.log('=== PAYMENT REDIRECT EVENT ===', event);
+                let url;
+                if (Array.isArray(event)) {
+                    url = event[0];  // Livewire v3 passes as array
+                } else if (typeof event === 'string') {
+                    url = event;  // Direct string
+                } else {
+                    url = event.url;  // Object with url property
+                }
+                
+                handlePaymentRedirect(url);
+            });
+        });
+
+        // Livewire v2 fallback
+        document.addEventListener('livewire:load', () => {
+            console.log('Livewire loaded (v2)');
+            
             Livewire.on('order-success', (data) => {
-                console.log('Order success:', data);
-                showSuccessModal(data[0]);
+                showSuccessModal(data[0] || data);
             });
 
             Livewire.on('order-error', (data) => {
-                console.log('Order error:', data);
-                showErrorToast(data[0].message);
+                showErrorToast((data[0] && data[0].message) || data.message);
+            });
+
+            Livewire.on('payment-redirect', (data) => {
+                const url = (data[0] && data[0].url) || data.url;
+                if (url) handlePaymentRedirect(url);
             });
         });
+
+        console.log('Cart script complete');
     </script>
+
+    <style>
+        .btn_pay_now_modal {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+
+        .btn_pay_now_modal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+    </style>
 </div>

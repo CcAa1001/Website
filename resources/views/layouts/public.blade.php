@@ -153,8 +153,7 @@
     {{-- Bootstrap --}}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    {{-- Alpine.js --}}
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    {{-- Alpine.js (non need becausze of livewire v3.--}}
     
     {{-- Livewire Scripts --}}
     @livewireScripts

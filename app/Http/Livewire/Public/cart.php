@@ -9,6 +9,7 @@ use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\TableSession;
+use App\Services\PaymentGateway\NusandanaGateway;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\Attributes\On;
@@ -35,16 +36,18 @@ class Cart extends Component
     public ?string $customerName = null;
     public ?string $customerPhone = null;
 
+    // NEW: Track if order was placed but unpaid
+    public ?string $pendingOrderId = null;
+    public bool $hasPendingOrder = false;
+
     public function mount()
     {
         $this->loadTableSession();
         $this->loadCart();
         $this->loadPaymentMethods();
+        $this->checkPendingOrder();
     }
 
-    /**
-     * Load table session from cookie/request
-     */
     protected function loadTableSession()
     {
         $this->sessionToken = request()->cookie('table_session_token');
@@ -72,9 +75,22 @@ class Cart extends Component
         }
     }
 
-    /**
-     * Load available payment methods
-     */
+    protected function checkPendingOrder()
+    {
+        if ($this->hasTableSession && $this->tableInfo) {
+            $pendingOrder = Order::where('table_session_id', $this->tableInfo['session_id'])
+                                 ->where('payment_status', 'unpaid')
+                                 ->where('status', '!=', 'cancelled')
+                                 ->latest()
+                                 ->first();
+
+            if ($pendingOrder) {
+                $this->hasPendingOrder = true;
+                $this->pendingOrderId = $pendingOrder->id;
+            }
+        }
+    }
+
     protected function loadPaymentMethods()
     {
         if ($this->hasTableSession && $this->tableInfo) {
@@ -88,14 +104,13 @@ class Cart extends Component
                     'name' => $pm->name,
                     'type' => $pm->payment_type,
                     'icon' => $this->getPaymentIcon($pm->payment_type),
+                    'requires_online' => $pm->requires_online_payment,
+                    'gateway_code' => $pm->gateway_code,
                 ])
                 ->toArray();
         }
     }
 
-    /**
-     * Get payment icon based on type
-     */
     protected function getPaymentIcon(string $type): string
     {
         return match($type) {
@@ -108,19 +123,13 @@ class Cart extends Component
         };
     }
 
-    /**
-     * Load cart from session
-     */
-    public function loadCart()
+    protected function loadCart()
     {
         $cartKey = $this->getCartKey();
         $this->items = session($cartKey, []);
         $this->calculateTotals();
     }
 
-    /**
-     * Get cart key (unique per table session)
-     */
     protected function getCartKey(): string
     {
         if ($this->sessionToken) {
@@ -129,9 +138,6 @@ class Cart extends Component
         return 'cart';
     }
 
-    /**
-     * Calculate all totals
-     */
     protected function calculateTotals()
     {
         $this->subtotal = 0;
@@ -142,7 +148,6 @@ class Cart extends Component
             $this->itemCount += $item['quantity'];
         }
 
-        // Calculate tax and service charge if table session exists
         if ($this->hasTableSession && $this->tableInfo) {
             $taxRate = $this->tableInfo['tax_rate'] ?? 0;
             $serviceRate = $this->tableInfo['service_charge_rate'] ?? 0;
@@ -169,17 +174,13 @@ class Cart extends Component
         if (!$product) return;
 
         $variant = $variantId ? ProductVariant::find($variantId) : null;
-
-        // Generate unique cart key
         $cartKey = $this->generateCartKey($productId, $variantId, $modifiers);
 
-        // Calculate item price
         $price = $product->base_price;
         if ($variant) {
             $price += $variant->price_adjustment;
         }
 
-        // Add modifier prices
         $modifierTotal = 0;
         $modifierNames = [];
         foreach ($modifiers as $modifier) {
@@ -284,12 +285,9 @@ class Cart extends Component
         ]);
     }
 
-    /**
-     * Open payment modal
-     */
     public function proceedToPayment()
     {
-        if (empty($this->items)) {
+        if (empty($this->items) && !$this->hasPendingOrder) {
             $this->dispatch('order-error', ['message' => 'Keranjang kosong']);
             return;
         }
@@ -303,12 +301,18 @@ class Cart extends Component
     }
 
     /**
-     * Submit order with payment
+     * FIXED: Submit order with payment - properly handles redirect
      */
     public function submitOrderWithPayment(?string $orderNotes = null)
     {
         if (!$this->selectedPaymentMethod) {
             $this->dispatch('order-error', ['message' => 'Silakan pilih metode pembayaran']);
+            return;
+        }
+
+        $paymentMethod = PaymentMethod::find($this->selectedPaymentMethod);
+        if (!$paymentMethod) {
+            $this->dispatch('order-error', ['message' => 'Metode pembayaran tidak valid']);
             return;
         }
 
@@ -320,54 +324,59 @@ class Cart extends Component
                 throw new \Exception('Sesi meja tidak valid');
             }
 
-            $orderNumber = $this->generateOrderNumber($session->outlet_id);
+            // If there's a pending order, use it
+            if ($this->hasPendingOrder && $this->pendingOrderId) {
+                $order = Order::find($this->pendingOrderId);
+            } else {
+                // Create new order
+                $orderNumber = $this->generateOrderNumber($session->outlet_id);
 
-            // Create order (PAID)
-            $order = Order::create([
-                'tenant_id' => $this->tableInfo['tenant_id'],
-                'outlet_id' => $this->tableInfo['outlet_id'],
-                'table_id' => $this->tableInfo['table_id'],
-                'table_session_id' => $session->id,
-                'order_number' => $orderNumber,
-                'order_type' => 'dine_in',
-                'order_source' => 'qr_scan',
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-                'customer_name' => $this->customerName,
-                'customer_phone' => $this->customerPhone,
-                'subtotal' => $this->subtotal,
-                'tax_amount' => $this->taxAmount,
-                'service_charge' => $this->serviceCharge,
-                'grand_total' => $this->grandTotal,
-                'guest_count' => $session->guest_count,
-                'notes' => $orderNotes,
-                'ordered_at' => now(),
-                'confirmed_at' => now(),
-            ]);
-
-            // Create order items
-            foreach ($this->items as $item) {
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'product_variant_id' => $item['variant_id'],
-                    'product_name' => $item['name'],
-                    'variant_name' => $item['variant_name'],
-                    'sku' => $item['sku'] ?? null,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['price'],
-                    'subtotal' => $item['price'] * $item['quantity'],
-                    'modifiers' => !empty($item['modifiers']) ? json_encode($item['modifiers']) : null,
-                    'notes' => $item['notes'],
-                    'kitchen_status' => 'pending',
+                $order = Order::create([
+                    'tenant_id' => $this->tableInfo['tenant_id'],
+                    'outlet_id' => $this->tableInfo['outlet_id'],
+                    'table_id' => $this->tableInfo['table_id'],
+                    'table_session_id' => $session->id,
+                    'order_number' => $orderNumber,
+                    'order_type' => 'dine_in',
+                    'order_source' => 'qr_scan',
+                    'status' => 'pending',
+                    'payment_status' => 'unpaid',
+                    'requires_payment' => $paymentMethod->requires_online_payment,
+                    'payment_gateway' => $paymentMethod->gateway_code,
+                    'customer_name' => $this->customerName,
+                    'customer_phone' => $this->customerPhone,
+                    'subtotal' => $this->subtotal,
+                    'tax_amount' => $this->taxAmount,
+                    'service_charge' => $this->serviceCharge,
+                    'grand_total' => $this->grandTotal,
+                    'guest_count' => $session->guest_count,
+                    'notes' => $orderNotes,
+                    'ordered_at' => now(),
                 ]);
+
+                // Create order items
+                foreach ($this->items as $item) {
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => $item['product_id'],
+                        'product_variant_id' => $item['variant_id'],
+                        'product_name' => $item['name'],
+                        'variant_name' => $item['variant_name'],
+                        'sku' => $item['sku'] ?? null,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['price'],
+                        'subtotal' => $item['price'] * $item['quantity'],
+                        'modifiers' => !empty($item['modifiers']) ? json_encode($item['modifiers']) : null,
+                        'notes' => $item['notes'],
+                        'kitchen_status' => 'hold', // Hold until payment
+                    ]);
+                }
             }
 
             // Create payment record
-            $paymentMethod = PaymentMethod::find($this->selectedPaymentMethod);
             $paymentNumber = 'PAY-' . now()->format('YmdHis') . '-' . substr($order->id, 0, 8);
 
-            Payment::create([
+            $payment = Payment::create([
                 'tenant_id' => $this->tableInfo['tenant_id'],
                 'outlet_id' => $this->tableInfo['outlet_id'],
                 'order_id' => $order->id,
@@ -376,39 +385,118 @@ class Cart extends Component
                 'transaction_type' => 'payment',
                 'amount' => $this->grandTotal,
                 'net_amount' => $this->grandTotal,
-                'status' => 'completed',
-                'paid_at' => now(),
+                'status' => 'pending',
+                'gateway' => $paymentMethod->gateway_code,
             ]);
 
-            $session->update(['status' => 'ordering']);
+            // Handle payment based on type
+            if ($paymentMethod->requires_online_payment && $paymentMethod->gateway_code === 'nusandana') {
+                // QRIS/E-Wallet via Nusandana
+                $gatewayResult = $this->processNusandanaPayment($order, $payment, $paymentMethod);
+                
+                if (!$gatewayResult['success']) {
+                    throw new \Exception($gatewayResult['message']);
+                }
 
-            DB::commit();
+                // Update payment with gateway info
+                $payment->update([
+                    'payment_url' => $gatewayResult['payment_url'],
+                    'gateway_transaction_id' => $gatewayResult['platform_order_no'],
+                    'payment_expired_at' => now()->addMinutes(15),
+                ]);
 
-            // Clear cart
-            $this->items = [];
-            $this->saveCart();
-            $this->calculateTotals();
-            $this->isOpen = false;
-            $this->showPaymentModal = false;
-            $this->reset(['selectedPaymentMethod', 'customerName', 'customerPhone']);
+                DB::commit();
 
-            $this->dispatch('order-success', [
-                'message' => 'Pembayaran berhasil!',
-                'order_number' => $orderNumber,
-                'order_id' => $order->id,
-                'payment_method' => $paymentMethod->name,
-                'amount' => $this->formatPrice($this->grandTotal),
-            ]);
+                // Clear cart
+                $this->items = [];
+                $this->saveCart();
+                $this->calculateTotals();
+                $this->isOpen = false;
+                $this->showPaymentModal = false;
+                $this->reset(['selectedPaymentMethod', 'customerName', 'customerPhone']);
+
+                // FIXED: Dispatch redirect event instead of using redirect()
+                $redirectUrl = route('payment.redirect', [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                ]);
+
+                $this->dispatch('payment-redirect', $redirectUrl);
+
+            } else {
+                // Cash/Manual payment - mark as pending, staff confirms
+                $payment->update([
+                    'status' => 'pending',
+                ]);
+
+                DB::commit();
+
+                // Clear cart
+                $this->items = [];
+                $this->saveCart();
+                $this->calculateTotals();
+                $this->isOpen = false;
+                $this->showPaymentModal = false;
+                $this->reset(['selectedPaymentMethod', 'customerName', 'customerPhone']);
+
+                $this->dispatch('order-success', [
+                    'message' => 'Pesanan berhasil! Silakan bayar ke kasir',
+                    'order_number' => $order->order_number,
+                    'order_id' => $order->id,
+                    'payment_method' => $paymentMethod->name,
+                ]);
+            }
 
         } catch (\Exception $e) {
             DB::rollBack();
             $this->dispatch('order-error', ['message' => 'Gagal: ' . $e->getMessage()]);
         }
+    } 
+
+    protected function processNusandanaPayment($order, $payment, $paymentMethod)
+    {
+        try {
+            $outlet = $order->outlet;
+            $config = $outlet->nusandana_config ? json_decode($outlet->nusandana_config, true) : null;
+
+            if (!$config || empty($config['merchant_no']) || empty($config['signature_key'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Konfigurasi pembayaran outlet tidak ditemukan',
+                ];
+            }
+
+            // Temporarily override env for this outlet
+            config([
+                'services.nusandana.merchant_no' => $config['merchant_no'],
+                'services.nusandana.signature_key' => $config['signature_key'],
+                'services.nusandana.api_base_url' => $config['api_base_url'] ?? env('NUSANDANA_API_BASE_URL', 'https://api.nusandana.co.id'),
+            ]);
+
+            $gateway = new NusandanaGateway();
+
+            $result = $gateway->createPayment([
+                'order_no' => $payment->payment_number,
+                'amount' => $order->grand_total,
+                'payment_method' => 'qrcode',
+                'callback_url' => route('webhook.nusandana.payment'),
+            ]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            \Log::error('Nusandana Payment Error', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 
-    /**
-     * Submit order without payment (pay later)
-     */
     public function submitOrder(?string $orderNotes = null)
     {
         if (empty($this->items)) {
@@ -431,7 +519,6 @@ class Cart extends Component
 
             $orderNumber = $this->generateOrderNumber($session->outlet_id);
 
-            // Create order (UNPAID)
             $order = Order::create([
                 'tenant_id' => $this->tableInfo['tenant_id'],
                 'outlet_id' => $this->tableInfo['outlet_id'],
@@ -442,6 +529,8 @@ class Cart extends Component
                 'order_source' => 'qr_scan',
                 'status' => 'pending',
                 'payment_status' => 'unpaid',
+                'requires_payment' => false,
+                'allow_retry_payment' => true,
                 'subtotal' => $this->subtotal,
                 'tax_amount' => $this->taxAmount,
                 'service_charge' => $this->serviceCharge,
@@ -451,7 +540,6 @@ class Cart extends Component
                 'ordered_at' => now(),
             ]);
 
-            // Create order items
             foreach ($this->items as $item) {
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -473,7 +561,9 @@ class Cart extends Component
 
             DB::commit();
 
-            // Clear cart
+            $this->hasPendingOrder = true;
+            $this->pendingOrderId = $order->id;
+
             $this->items = [];
             $this->saveCart();
             $this->calculateTotals();
@@ -483,6 +573,7 @@ class Cart extends Component
                 'message' => 'Pesanan berhasil dikirim!',
                 'order_number' => $orderNumber,
                 'order_id' => $order->id,
+                'show_pay_now_button' => true,
             ]);
 
         } catch (\Exception $e) {
@@ -490,10 +581,17 @@ class Cart extends Component
             $this->dispatch('order-error', ['message' => 'Gagal: ' . $e->getMessage()]);
         }
     }
+
+    public function payPendingOrder()
+    {
+        if (!$this->hasPendingOrder || !$this->pendingOrderId) {
+            $this->dispatch('order-error', ['message' => 'Tidak ada pesanan yang perlu dibayar']);
+            return;
+        }
+
+        $this->proceedToPayment();
+    }
     
-    /**
-     * Generate order number
-     */
     protected function generateOrderNumber(string $outletId): string
     {
         $date = now()->format('Ymd');
