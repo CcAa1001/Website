@@ -24,7 +24,6 @@ class Dashboard extends Component
     #[On('refreshDashboard')]
     public function refresh()
     {
-        // This method will be called when 'refreshDashboard' event is dispatched
         $this->render();
     }
 
@@ -67,20 +66,15 @@ class Dashboard extends Component
         $tenantId = auth()->user()->tenant_id;
         $outletId = auth()->user()->outlet_id;
 
-        // Active QR orders with items and modifiers
+        // ✅ CHANGED: Use track_in_kitchen instead of order_source filter
+        // This shows ALL orders marked for kitchen tracking, regardless of source
         $activeOrders = Order::where('tenant_id', $tenantId)
             ->where('outlet_id', $outletId)
             ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])
-            ->where('order_source', 'qr_scan')
+            ->trackedInKitchen()  // ← Uses the new scope
             ->with(['table', 'items', 'customer'])
-            ->orderBy('created_at', 'asc') // Oldest first
+            ->orderBy('created_at', 'asc')
             ->get();
-
-        // Debug: Log the statuses we're getting
-        \Log::info('Dashboard Orders:', [
-            'total' => $activeOrders->count(),
-            'statuses' => $activeOrders->pluck('status')->toArray(),
-        ]);
 
         // Group orders by status for Kanban board
         $ordersByStatus = [
@@ -98,13 +92,19 @@ class Dashboard extends Component
             ->get();
 
         // Table stats
-        $tableStats = [
-            'total' => Table::where('outlet_id', $outletId)->count(),
-            'occupied' => Table::where('outlet_id', $outletId)->where('status', 'occupied')->count(),
-            'available' => Table::where('outlet_id', $outletId)->where('status', 'available')->count(),
-        ];
+        $occupiedTableIds = TableSession::where('outlet_id', $outletId)
+            ->active()  // uses your existing scope — checks expires_at and status
+            ->pluck('table_id');
 
-        // Calculate today's stats
+        $tableStats = [
+            'total'     => Table::where('outlet_id', $outletId)->count(),
+            'occupied'  => $occupiedTableIds->count(),
+            'available' => Table::where('outlet_id', $outletId)
+                                ->whereNotIn('id', $occupiedTableIds)
+                                ->count(),
+];
+
+        // Calculate today's stats (all orders, not just tracked)
         $todaysOrders = Order::where('tenant_id', $tenantId)
             ->whereDate('created_at', now())
             ->get();

@@ -241,8 +241,9 @@ class TableSessionController extends Controller
             ], 400);
         }
 
-        $session->close();
-
+        $session->close();  
+        // ✅ ADD THIS: Reset table status when session ends cleanly
+        $session->table->update(['status' => 'available', 'current_order_id' => null]);
         // Clear cookie
         $cookie = Cookie::forget(self::SESSION_COOKIE);
 

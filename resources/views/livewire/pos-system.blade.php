@@ -277,6 +277,23 @@
                     </div>
 
                     {{-- Action Buttons --}}
+                    <div class="kitchen-toggle-row" wire:click="$toggle('trackInKitchen')">
+                        <div class="kitchen-toggle-left">
+                            <div class="kitchen-toggle-icon {{ $trackInKitchen ? 'active' : '' }}">
+                                <i class="material-icons">restaurant</i>
+                            </div>
+                            <div>
+                                <span class="kitchen-toggle-label">Send to Kitchen Board</span>
+                                <span class="kitchen-toggle-desc {{ $trackInKitchen ? 'active' : '' }}">
+                                    {{ $trackInKitchen ? 'Tampil di Kanban Dashboard' : 'Tidak dikirim ke dapur' }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="kitchen-toggle-switch {{ $trackInKitchen ? 'on' : '' }}">
+                            <div class="kitchen-toggle-knob"></div>
+                        </div>
+                    </div>
+
                     <div class="cart-actions">
                         <button 
                             wire:click="parkOrder"
@@ -1853,6 +1870,100 @@
     font-size: 4rem;
     margin-bottom: 1rem;
     opacity: 0.3;
+}
+
+/* Kitchen Board Toggle */
+.kitchen-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 1.5rem;
+    margin: 0;
+    cursor: pointer;
+    border-top: 1px solid var(--border);
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.kitchen-toggle-row:hover {
+    background: rgba(255, 107, 107, 0.03);
+}
+
+.kitchen-toggle-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.kitchen-toggle-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--border);
+    transition: background 0.3s;
+    flex-shrink: 0;
+}
+
+.kitchen-toggle-icon.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+}
+
+.kitchen-toggle-icon i {
+    color: white;
+    font-size: 18px;
+}
+
+.kitchen-toggle-label {
+    display: block;
+    font-size: 0.813rem;
+    font-weight: 600;
+    color: var(--dark);
+    line-height: 1.2;
+}
+
+.kitchen-toggle-desc {
+    display: block;
+    font-size: 0.7rem;
+    color: #999;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+.kitchen-toggle-desc.active {
+    color: var(--primary);
+}
+
+.kitchen-toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    background: #c1c1c1;
+    border-radius: 22px;
+    transition: background 0.3s;
+    flex-shrink: 0;
+}
+
+.kitchen-toggle-switch.on {
+    background: var(--primary);
+}
+
+.kitchen-toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    transition: left 0.3s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.kitchen-toggle-switch.on .kitchen-toggle-knob {
+    left: 20px;
 }
 
 /* Responsive */

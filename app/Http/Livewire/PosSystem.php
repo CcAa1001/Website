@@ -45,6 +45,7 @@ class POSSystem extends Component
     public $customerPhone = '';
     public $guestCount = 1;
     public $orderNotes = '';
+    public $trackInKitchen = true; // ← NEW: Send to Kitchen Board toggle
     
     // ==================== PAYMENT ====================
     public $paymentMethods = [];
@@ -139,10 +140,8 @@ class POSSystem extends Component
             try {
                 $parkedOrders = session()->get('parked_orders_' . $user->id, []);
                 
-                // Validate and clean parked orders
                 $cleanedOrders = [];
                 foreach ($parkedOrders as $order) {
-                    // Skip orders with invalid data types
                     if (is_array($order) && isset($order['id']) && is_string($order['id'])) {
                         $cleanedOrders[] = $order;
                     }
@@ -150,12 +149,10 @@ class POSSystem extends Component
                 
                 $this->parkedOrders = $cleanedOrders;
                 
-                // Update session with cleaned data
                 if (count($cleanedOrders) !== count($parkedOrders)) {
                     session()->put('parked_orders_' . $user->id, $cleanedOrders);
                 }
             } catch (\Exception $e) {
-                // If there's any error, clear the session
                 $this->parkedOrders = [];
                 session()->forget('parked_orders_' . $user->id);
             }
@@ -182,16 +179,13 @@ class POSSystem extends Component
         
         if (!$product) return;
 
-        // Check if product has modifiers or variants
         if ($product->modifierGroups->isNotEmpty() || $product->variants->isNotEmpty()) {
-            // Open modifier modal - store ID only
             $this->currentProductId = $productId;
             $this->selectedModifiers = [];
             $this->specialInstructions = '';
             $this->itemQuantity = 1;
             $this->showModifierModal = true;
         } else {
-            // Add directly to cart
             $this->addToCartDirect($product);
         }
     }
@@ -234,13 +228,11 @@ class POSSystem extends Component
     {
         if (!$this->currentProductId) return;
 
-        // Load product fresh from database
         $product = Product::find($this->currentProductId);
         if (!$product) return;
 
         $cartKey = 'item_' . $this->cartItemCounter++;
         
-        // Calculate modifiers total
         $modifiersTotal = 0;
         $modifiersList = [];
         
@@ -300,7 +292,6 @@ class POSSystem extends Component
             }
         }
 
-        // Recalculate item total
         $item = $this->cart[$cartKey];
         $this->cart[$cartKey]['item_total'] = ($item['base_price'] + $item['modifiers_total']) * $item['quantity'];
         
@@ -340,13 +331,8 @@ class POSSystem extends Component
             $this->subtotal += $item['item_total'];
         }
 
-        // Tax calculation
         $this->taxAmount = $this->subtotal * $this->taxRate;
-        
-        // Service charge (optional)
         $this->serviceCharge = $this->applyServiceCharge ? ($this->subtotal * $this->serviceChargeRate) : 0;
-        
-        // Grand total
         $this->grandTotal = $this->subtotal + $this->taxAmount + $this->serviceCharge - $this->discountAmount;
     }
 
@@ -396,7 +382,6 @@ class POSSystem extends Component
 
         $user = auth()->user();
         
-        // Get table number if selected
         $tableNumber = null;
         if ($this->selectedTable) {
             $table = Table::find($this->selectedTable);
@@ -409,11 +394,12 @@ class POSSystem extends Component
             'cart' => $this->cart,
             'order_type' => $this->orderType,
             'selected_table' => $this->selectedTable,
-            'table_number' => $tableNumber, // Store table number instead of object
+            'table_number' => $tableNumber,
             'customer_name' => $this->customerName,
             'customer_phone' => $this->customerPhone,
             'guest_count' => $this->guestCount,
             'order_notes' => $this->orderNotes,
+            'track_in_kitchen' => $this->trackInKitchen,  // ← NEW: preserve toggle state
             'subtotal' => $this->subtotal,
             'tax_amount' => $this->taxAmount,
             'service_charge' => $this->serviceCharge,
@@ -439,7 +425,6 @@ class POSSystem extends Component
 
         $parkedOrder = $this->parkedOrders[$index];
         
-        // Load order data
         $this->cart = $parkedOrder['cart'];
         $this->orderType = $parkedOrder['order_type'];
         $this->selectedTable = $parkedOrder['selected_table'];
@@ -447,12 +432,12 @@ class POSSystem extends Component
         $this->customerPhone = $parkedOrder['customer_phone'];
         $this->guestCount = $parkedOrder['guest_count'];
         $this->orderNotes = $parkedOrder['order_notes'];
+        $this->trackInKitchen = $parkedOrder['track_in_kitchen'] ?? true;  // ← NEW: restore toggle
         
-        // Remove from parked orders
         $user = auth()->user();
         $parkedOrders = session()->get('parked_orders_' . $user->id, []);
         unset($parkedOrders[$index]);
-        $parkedOrders = array_values($parkedOrders); // Re-index
+        $parkedOrders = array_values($parkedOrders);
         session()->put('parked_orders_' . $user->id, $parkedOrders);
         
         $this->loadParkedOrders();
@@ -495,18 +480,15 @@ class POSSystem extends Component
             return;
         }
 
-        // Validate table selection for dine-in BEFORE opening modal
         if ($this->orderType === 'dine_in' && !$this->selectedTable) {
             $this->dispatch('show-toast', [
                 'message' => '⚠️ Pilih meja terlebih dahulu untuk Dine In!',
                 'type' => 'warning'
             ]);
-            // Optionally open table selector automatically
             $this->showTableSelector = true;
             return;
         }
 
-        // Initialize payment array
         $this->selectedPayments = [
             0 => [
                 'method_id' => null,
@@ -534,7 +516,6 @@ class POSSystem extends Component
             return;
         }
 
-        // Validate payment method selected
         if (!isset($this->selectedPayments[0]['method_id']) || empty($this->selectedPayments[0]['method_id'])) {
             $this->dispatch('show-toast', [
                 'message' => 'Pilih metode pembayaran',
@@ -543,7 +524,6 @@ class POSSystem extends Component
             return;
         }
 
-        // Get payment method
         $paymentMethod = PaymentMethod::find($this->selectedPayments[0]['method_id']);
         
         if (!$paymentMethod) {
@@ -554,7 +534,6 @@ class POSSystem extends Component
             return;
         }
         
-        // For cash, validate amount received
         if ($paymentMethod->payment_type === 'cash') {
             $cashReceived = $this->selectedPayments[0]['cash_received'] ?? 0;
             
@@ -571,7 +550,7 @@ class POSSystem extends Component
         try {
             $user = auth()->user();
             
-            // Create order
+            // ✅ Create order with track_in_kitchen
             $order = Order::create([
                 'tenant_id' => $user->tenant_id,
                 'outlet_id' => $user->outlet_id,
@@ -580,6 +559,7 @@ class POSSystem extends Component
                 'order_number' => $this->generateOrderNumber(),
                 'order_type' => $this->orderType,
                 'order_source' => 'pos',
+                'track_in_kitchen' => $this->trackInKitchen,  // ← NEW
                 'customer_name' => $this->customerName ?: 'Guest',
                 'customer_phone' => $this->customerPhone,
                 'guest_count' => $this->guestCount,
@@ -638,16 +618,27 @@ class POSSystem extends Component
 
             DB::commit();
 
+            // ✅ NEW: Broadcast to kitchen if tracked
+            if ($this->trackInKitchen) {
+                try {
+                    broadcast(new \App\Events\NewOrderReceived(
+                        $order->load(['table', 'items'])
+                    ))->toOthers();
+                } catch (\Exception $e) {
+                    \Log::warning('Broadcast failed: ' . $e->getMessage());
+                }
+            }
+
             // Clear cart and reset
             $this->clearCart();
             $this->closePaymentModal();
             
+            $kitchenMsg = $this->trackInKitchen ? ' (dikirim ke Kitchen Board)' : '';
             $this->dispatch('show-toast', [
-                'message' => 'Order berhasil! #' . $order->order_number,
+                'message' => '✅ Order berhasil! #' . $order->order_number . $kitchenMsg,
                 'type' => 'success'
             ]);
 
-            // Optionally: Print receipt
             $this->dispatch('print-receipt', ['order_id' => $order->id]);
             
         } catch (\Exception $e) {
@@ -681,6 +672,7 @@ class POSSystem extends Component
         $this->customerPhone = '';
         $this->guestCount = 1;
         $this->orderNotes = '';
+        $this->trackInKitchen = true;  // ← Reset to default ON
         $this->applyServiceCharge = false;
     }
 

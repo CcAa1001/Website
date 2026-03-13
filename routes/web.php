@@ -43,6 +43,24 @@ use App\Http\Controllers\PaymentRedirectController;
 // ==========================================
 use App\Http\Livewire\Public\ShopProducts;
 
+
+// Serve storage files with CORS headers
+Route::get('/storage/{path}', function ($path) {
+    $filePath = storage_path('app/public/' . $path);
+    
+    if (!file_exists($filePath)) {
+        abort(404);
+    }
+    
+    $mimeType = mime_content_type($filePath);
+    
+    return response()->file($filePath, [
+        'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+        'Access-Control-Allow-Headers' => 'Content-Type, Accept, Origin',
+        'Content-Type' => $mimeType,
+    ]);
+})->where('path', '.*')->name('storage');
 /*
 |--------------------------------------------------------------------------
 | PUBLIC ROUTES (Customer Facing - QR Ordering)

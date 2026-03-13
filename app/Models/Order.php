@@ -22,6 +22,7 @@ class Order extends Model
         'order_number',
         'order_type',
         'order_source',
+        'track_in_kitchen',       // ← NEW: whether this order appears on Kanban board
         'external_order_id',
         'customer_name',
         'customer_phone',
@@ -58,6 +59,7 @@ class Order extends Model
         'rounding_amount' => 'decimal:2',
         'grand_total' => 'decimal:2',
         'guest_count' => 'integer',
+        'track_in_kitchen' => 'boolean',   // ← NEW
         'ordered_at' => 'datetime',
         'confirmed_at' => 'datetime',
         'prepared_at' => 'datetime',
@@ -65,6 +67,14 @@ class Order extends Model
         'cancelled_at' => 'datetime',
         'estimated_delivery_time' => 'datetime',
     ];
+
+    /**
+     * Scope: only orders that should appear on the kitchen/dashboard Kanban board
+     */
+    public function scopeTrackedInKitchen($query)
+    {
+        return $query->where('track_in_kitchen', true);
+    }
 
     /**
      * Relationships
